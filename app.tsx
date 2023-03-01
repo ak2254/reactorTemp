@@ -1,94 +1,41 @@
-import React from 'react';
-import { Line } from 'react-chartjs-2';
+import React, { useState, useEffect } from "react";
 
-interface DashboardProps {
-  temperature: number[];
-  pH: number[];
-  dissolvedOxygen: number[];
-  agitationRate: number[];
-  biomass: number[];
-  productivity: number[];
-  feedRate: number[];
-  pressure: number[];
-  flowRate: number[];
+interface BioreactorData {
+  agitationSpeed: number;
+  aerationRate: number;
+  temperature: number;
+  time: number;
 }
 
-const BioreactorDashboard: React.FC<DashboardProps> = ({ temperature, pH, dissolvedOxygen, agitationRate, biomass, productivity, feedRate, pressure, flowRate }) => {
-  const data = {
-    labels: ['Time 1', 'Time 2', 'Time 3', 'Time 4', 'Time 5', 'Time 6', 'Time 7', 'Time 8', 'Time 9', 'Time 10'],
-    datasets: [
-      {
-        label: 'Temperature (°C)',
-        data: temperature,
-        fill: false,
-        borderColor: 'red',
-        tension: 0.1,
-      },
-      {
-        label: 'pH',
-        data: pH,
-        fill: false,
-        borderColor: 'blue',
-        tension: 0.1,
-      },
-      {
-        label: 'Dissolved Oxygen (mg/L)',
-        data: dissolvedOxygen,
-        fill: false,
-        borderColor: 'green',
-        tension: 0.1,
-      },
-      {
-        label: 'Agitation Rate (rpm)',
-        data: agitationRate,
-        fill: false,
-        borderColor: 'purple',
-        tension: 0.1,
-      },
-      {
-        label: 'Biomass (g/L)',
-        data: biomass,
-        fill: false,
-        borderColor: 'orange',
-        tension: 0.1,
-      },
-      {
-        label: 'Productivity (g/L/hr)',
-        data: productivity,
-        fill: false,
-        borderColor: 'pink',
-        tension: 0.1,
-      },
-      {
-        label: 'Feed Rate (mL/min)',
-        data: feedRate,
-        fill: false,
-        borderColor: 'brown',
-        tension: 0.1,
-      },
-      {
-        label: 'Pressure (psi)',
-        data: pressure,
-        fill: false,
-        borderColor: 'gray',
-        tension: 0.1,
-      },
-      {
-        label: 'Flow Rate (L/min)',
-        data: flowRate,
-        fill: false,
-        borderColor: 'teal',
-        tension: 0.1,
-      },
-    ],
-  };
+const BioreactorDashboard: React.FC = () => {
+  const [bioreactorData, setBioreactorData] = useState<BioreactorData[]>([]);
+
+  useEffect(() => {
+    // simulate data updates every 5 seconds
+    const interval = setInterval(() => {
+      setBioreactorData((prevState) => [
+        ...prevState,
+        {
+          agitationSpeed: Math.random() * 10 + 100, // generate random agitation speed between 100 and 110 rpm
+          aerationRate: Math.random() * 2 + 1, // generate random aeration rate between 1 and 3 lpm
+          temperature: Math.random() * 50 + 25, // generate random temperature between 25°C and 75°C
+          time: Date.now(),
+        },
+      ]);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const latestData = bioreactorData[bioreactorData.length - 1];
 
   return (
-    <div className="bioreactor-dashboard">
-      <h2>Bioreactor Monitoring Dashboard</h2>
-      <Line data={data} />
+    <div>
+      <h1>Bioreactor Dashboard</h1>
+      <h2>Process Parameters:</h2>
+      <p>Agitation Speed: {latestData.agitationSpeed} rpm</p>
+      <p>Aeration Rate: {latestData.aerationRate} lpm</p>
+      <p>Temperature: {latestData.temperature}°C</p>
     </div>
   );
 };
-
-export default BioreactorDashboard;
