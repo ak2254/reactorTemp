@@ -1,41 +1,44 @@
-import React, { useState, useEffect } from "react";
 
-interface BioreactorData {
-  agitationSpeed: number;
-  aerationRate: number;
-  temperature: number;
-  time: number;
-}
+import axios, { AxiosRequestConfig } from 'axios';
+import { from, Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
-const BioreactorDashboard: React.FC = () => {
-  const [bioreactorData, setBioreactorData] = useState<BioreactorData[]>([]);
+const authorizationHeader = `Bearer ${yourAuthToken}`;
 
-  useEffect(() => {
-    // simulate data updates every 5 seconds
-    const interval = setInterval(() => {
-      setBioreactorData((prevState) => [
-        ...prevState,
-        {
-          agitationSpeed: Math.random() * 10 + 100, // generate random agitation speed between 100 and 110 rpm
-          aerationRate: Math.random() * 2 + 1, // generate random aeration rate between 1 and 3 lpm
-          temperature: Math.random() * 50 + 25, // generate random temperature between 25°C and 75°C
-          time: Date.now(),
-        },
-      ]);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const latestData = bioreactorData[bioreactorData.length - 1];
-
-  return (
-    <div>
-      <h1>Bioreactor Dashboard</h1>
-      <h2>Process Parameters:</h2>
-      <p>Agitation Speed: {latestData.agitationSpeed} rpm</p>
-      <p>Aeration Rate: {latestData.aerationRate} lpm</p>
-      <p>Temperature: {latestData.temperature}°C</p>
-    </div>
+const streamRequest = (): Observable<any> => {
+  const config: AxiosRequestConfig = {
+    method: 'get',
+    url: '/{unitop}/stream',
+    headers: { Authorization: authorizationHeader },
+    responseType: 'stream',
+  };
+  
+  return from(axios(config)).pipe(
+    map((response) => {
+      return response.data;
+    })
   );
+};
+
+const fetchData = () => {
+  useEffect(() => {
+    const subscription = streamRequest().subscribe(
+      (data) => {
+        // handle incoming data
+      },
+      (error) => {
+        // handle error
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+};
+
+const MyComponent = () => {
+  fetchData();
+
+  // render the component as needed
 };
