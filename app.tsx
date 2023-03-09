@@ -1,56 +1,45 @@
-import axios, { AxiosRequestConfig } from 'axios';
-import { from, Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const authorizationHeader = `Bearer ${yourAuthToken}`;
-
-const streamRequest = (): Observable<any> => {
-  const config: AxiosRequestConfig = {
-    method: 'get',
-    url: '/{unitop}/stream',
-    headers: { Authorization: authorizationHeader },
-    responseType: 'stream',
-  };
-  
-  return from(axios(config)).pipe(
-    map((response) => {
-      return response.data;
-    })
-  );
-};
-
-const fetchData = () => {
-  const [data, setData] = useState<string>('');
+const Home = () => {
+  const [data, setData] = useState('');
 
   useEffect(() => {
-    const subscription = streamRequest().subscribe(
-      (incomingData) => {
-        setData((prevData) => prevData + incomingData);
-      },
-      (error) => {
-        // handle error
+    const controller = new AbortController();
+
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/my-stream', {
+          headers: { Authorization: 'my-auth-token' },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        let receivedData = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          receivedData += new TextDecoder().decode(value);
+          setData(receivedData);
+        }
+      } catch (error) {
+        console.error(error);
       }
-    );
+    };
+
+    fetchData();
 
     return () => {
-      subscription.unsubscribe();
+      controller.abort();
     };
   }, []);
 
-  return (
-    <div>
-      {data}
-    </div>
-  );
+  return <div>{data}</div>;
 };
 
-const MyComponent = () => {
-  const data = fetchData();
-
-  return (
-    <div>
-      {data}
-    </div>
-  );
-};
+export default Home;
