@@ -1,7 +1,7 @@
-
 import axios, { AxiosRequestConfig } from 'axios';
 import { from, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { useState } from 'react';
 
 const authorizationHeader = `Bearer ${yourAuthToken}`;
 
@@ -21,10 +21,12 @@ const streamRequest = (): Observable<any> => {
 };
 
 const fetchData = () => {
+  const [data, setData] = useState<string>('');
+
   useEffect(() => {
     const subscription = streamRequest().subscribe(
-      (data) => {
-        // handle incoming data
+      (incomingData) => {
+        setData((prevData) => prevData + incomingData);
       },
       (error) => {
         // handle error
@@ -35,10 +37,20 @@ const fetchData = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  return (
+    <div>
+      {data}
+    </div>
+  );
 };
 
 const MyComponent = () => {
-  fetchData();
+  const data = fetchData();
 
-  // render the component as needed
+  return (
+    <div>
+      {data}
+    </div>
+  );
 };
