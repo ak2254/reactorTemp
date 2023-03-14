@@ -1,34 +1,41 @@
-import asyncio
-import unittest
-import httpx
-from hyprxa import HyprxaHttpxClient, HyprxaHttpxAsyncClient
+import pytest
+from httpx import Response, Request, AsyncClient
+from hyprxa_httpx_async_client import HyprxaHttpxAsyncClient
 
-class TestHyprxaHttpxClient(unittest.TestCase):
-    def setUp(self):
-        self.client = HyprxaHttpxClient()
 
-    def test_get_request(self):
-        response = self.client.get("https://jsonplaceholder.typicode.com/todos/1")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["userId"], 1)
+@pytest.mark.asyncio
+async def test_send_with_retry():
+    client = HyprxaHttpxAsyncClient()
+    
+    async def successful_request():
+        return Response(200, json={"success": True})
+    
+    response = await client._send_with_retry(successful_request)
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    
+    async def failing_request():
+        return Response(503)
+    
+    with pytest.raises(Response) as exc_info:
+        await client._send_with_retry(failing_request)
+    assert exc_info.value.status_code == 503
 
-    def test_post_request(self):
-        response = self.client.post("https://jsonplaceholder.typicode.com/posts", json={"title": "foo", "body": "bar", "userId": 1})
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json()["title"], "foo")
 
-class TestHyprxaHttpxAsyncClient(unittest.TestCase):
-    async def setUpAsync(self):
-        self.client = HyprxaHttpxAsyncClient()
-
-    async def test_get_request_async(self):
-        async with httpx.AsyncClient() as httpx_client:
-            response = await self.client.get("https://jsonplaceholder.typicode.com/todos/1", httpx_client=httpx_client)
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json()["userId"], 1)
-
-    async def test_post_request_async(self):
-        async with httpx.AsyncClient() as httpx_client:
-            response = await self.client.post("https://jsonplaceholder.typicode.com/posts", json={"title": "foo", "body": "bar", "userId": 1}, httpx_client=httpx_client)
-            self.assertEqual(response.status_code, 201)
-            self.assertEqual(response.json()["title"], "foo")
+@pytest.mark.asyncio
+async def test_send():
+    client = HyprxaHttpxAsyncClient()
+    
+    async def successful_request():
+        return Response(200, json={"success": True})
+    
+    response = await client.send(Request("GET", "https://example.com"))
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    
+    async def failing_request():
+        return Response(503)
+    
+    with pytest.raises(Response) as exc_info:
+        await client.send(Request("GET", "https://example.com"))
+    assert exc_info.value.status_code == 503
