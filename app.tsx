@@ -1,45 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import asyncio
+import unittest
+import httpx
+from hyprxa import HyprxaHttpxClient, HyprxaHttpxAsyncClient
 
-const Home = () => {
-  const [data, setData] = useState('');
+class TestHyprxaHttpxClient(unittest.TestCase):
+    def setUp(self):
+        self.client = HyprxaHttpxClient()
 
-  useEffect(() => {
-    const controller = new AbortController();
+    def test_get_request(self):
+        response = self.client.get("https://jsonplaceholder.typicode.com/todos/1")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["userId"], 1)
 
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/api/my-stream', {
-          headers: { Authorization: 'my-auth-token' },
-          signal: controller.signal,
-        });
+    def test_post_request(self):
+        response = self.client.post("https://jsonplaceholder.typicode.com/posts", json={"title": "foo", "body": "bar", "userId": 1})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["title"], "foo")
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+class TestHyprxaHttpxAsyncClient(unittest.TestCase):
+    async def setUpAsync(self):
+        self.client = HyprxaHttpxAsyncClient()
 
-        const reader = response.body.getReader();
-        let receivedData = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          receivedData += new TextDecoder().decode(value);
-          setData(receivedData);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    };
+    async def test_get_request_async(self):
+        async with httpx.AsyncClient() as httpx_client:
+            response = await self.client.get("https://jsonplaceholder.typicode.com/todos/1", httpx_client=httpx_client)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["userId"], 1)
 
-    fetchData();
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
-  return <div>{data}</div>;
-};
-
-export default Home;
+    async def test_post_request_async(self):
+        async with httpx.AsyncClient() as httpx_client:
+            response = await self.client.post("https://jsonplaceholder.typicode.com/posts", json={"title": "foo", "body": "bar", "userId": 1}, httpx_client=httpx_client)
+            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.json()["title"], "foo")
