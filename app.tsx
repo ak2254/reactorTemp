@@ -1,11 +1,9 @@
-ForAll(
-    Sequence(0, RoundUp(CountRows(YourDataSource) / 2000) - 1),
-    // Add the current batch of rows to the BigCollection
-    AddColumns(
-        BigCollection,
-        "Batch",
-        Filter(YourDataSource, RowNumber >= 1 + 2000 * Value)
-    )
+// Formula to collect data in batches
+Collect(
+    BigCollection,
+    {
+        Batch: Filter(YourDataSource, RowNumber >= 1 + 2000 * CountRows(BigCollection), RowNumber <= 2000 + 2000 * CountRows(BigCollection))
+    }
 )
 
 // Initialize variables
