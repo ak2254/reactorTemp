@@ -1,12 +1,23 @@
-// Collect data in batches of 2000 rows each
-ForAll(
-    Split(YourDataSource, 2000), // Split the data source into batches of 2000 rows
-    Patch(
+// Clear the BigCollection if it already exists
+ClearCollect(BigCollection, {});
+
+// Create a variable to store the chunk size (e.g., 1000 records per chunk)
+Set(chunkSize, 1000);
+
+// Calculate the total number of records in the data source
+Set(totalRecords, CountRows(YourDataSource));
+
+// Loop to collect data in chunks
+For(
+    Set(startIndex, 1), // Start index for the loop (e.g., 1)
+    startIndex <= totalRecords, // Loop condition
+    Set(startIndex, startIndex + chunkSize), // Increment the start index for each iteration
+    // Loop body
+    Collect(
         BigCollection,
-        Defaults(BigCollection),
-        ThisRecord
+        Filter(
+            YourDataSource,
+            RowNumber >= startIndex && RowNumber < Min(startIndex + chunkSize, totalRecords + 1)
+        )
     )
 )
-// Initialize variables
-Set(varBatchSize, 2000); // Number of rows in each batch
-Set(varStartIndex, 1);   // Start index of the current batch
