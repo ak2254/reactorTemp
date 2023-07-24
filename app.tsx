@@ -9,14 +9,10 @@ Set(totalRecords, CountRows(YourDataSource));
 
 // Use ForAll to loop through the data in chunks
 ForAll(
-    Sequence(0, RoundUp(totalRecords / chunkSize) - 1),
+    Split(YourDataSource, chunkSize), // Split the data source into chunks
     // Loop body
     Collect(
         BigCollection,
-        Filter(
-            YourDataSource,
-            RowNumber >= 1 + chunkSize * Value &&
-            RowNumber <= Min(totalRecords, 1 + chunkSize * (Value + 1))
-        )
+        ThisRecord // Add the chunk of data to the BigCollection
     )
 )
