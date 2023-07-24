@@ -1,16 +1,12 @@
-// Custom function to fetch data in batches
-ClearCollectBatchedData(varStartIndex)
-{
-    Collect(
+ForAll(
+    Sequence(0, RoundUp(CountRows(YourDataSource) / 2000) - 1),
+    // Add the current batch of rows to the BigCollection
+    AddColumns(
         BigCollection,
-        Filter(YourDataSource, RowNumber >= varStartIndex && RowNumber < varStartIndex + 2000)
-    );
-    If(
-        varStartIndex + 2000 < CountRows(YourDataSource),
-        ClearCollectBatchedData(varStartIndex + 2000)
+        "Batch",
+        Filter(YourDataSource, RowNumber >= 1 + 2000 * Value)
     )
-}
-
+)
 
 // Initialize variables
 Set(varBatchSize, 2000); // Number of rows in each batch
