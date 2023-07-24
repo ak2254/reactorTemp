@@ -7,17 +7,16 @@ Set(chunkSize, 1000);
 // Calculate the total number of records in the data source
 Set(totalRecords, CountRows(YourDataSource));
 
-// Loop to collect data in chunks
-For(
-    Set(startIndex, 1), // Start index for the loop (e.g., 1)
-    startIndex <= totalRecords, // Loop condition
-    Set(startIndex, startIndex + chunkSize), // Increment the start index for each iteration
+// Use ForAll to loop through the data in chunks
+ForAll(
+    Sequence(0, RoundUp(totalRecords / chunkSize) - 1),
     // Loop body
     Collect(
         BigCollection,
         Filter(
             YourDataSource,
-            RowNumber >= startIndex && RowNumber < Min(startIndex + chunkSize, totalRecords + 1)
+            RowNumber >= 1 + chunkSize * Value &&
+            RowNumber <= Min(totalRecords, 1 + chunkSize * (Value + 1))
         )
     )
 )
