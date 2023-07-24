@@ -1,8 +1,10 @@
-ClearCollect(BigCollection, {}); // Create an empty collection to store the grouped data
+// Step 2: Create the new collection to hold combined records
+ClearCollect(CombinedCollection, {});
 
-ForAll(GroupedEmployees,
-    Collect(BigCollection, {
-        Department: Result.Department,
-        Employees: Result
-    })
+// Step 3: Loop through the rows of the initial collection
+ForAll(InitialCollection,
+    // Step 4: Extract and combine records from the table column
+    Collect(CombinedCollection,
+        AddColumns(Data, 'RecordID', ID, 'RecordName', Name)
+    )
 );
