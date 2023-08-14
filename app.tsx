@@ -1,26 +1,12 @@
-# Update the Excel file on OneDrive
-conn_str = (
-    r'DRIVER={Microsoft Excel Driver (*.xls, *.xlsx, *.xlsm, *.xlsb)};'
-    r'DBQ=' + excel_file_path
-)
+from shareplum import Site, Office365
+import pandas as pd
 
-cnxn = pyodbc.connect(conn_str)
-cursor = cnxn.cursor()
+# SharePoint site and list information
+sharepoint_url = "https://your-sharepoint-site-url"
+username = "your-username"
+password = "your-password"
+list_name = "Your List Name"
 
-for _, row in df.iterrows():
-    cursor.execute(
-        "INSERT INTO [Sheet1$] (ID, Value, Version, Timestamp) VALUES (?, ?, ?, ?)",
-        row["ID"], row["Value"], row["Version"], row["Timestamp"]
-    )
-cnxn.commit()
-cursor.close()
-cnxn.close()
-Replace "path/to/your/excel/file.xlsx" with the actual path to your OneDrive Excel file.
-
-Keep in mind that accessing Excel files in OneDrive using ODBC might have limitations, and it's important to ensure that the file is not locked or being accessed by other users while your script updates it.
-
-
-
-
-
-
+# Connect to SharePoint using Office365 authentication
+authcookie = Office365(sharepoint_url, username=username, password=password).GetCookies()
+site = Site(sharepoint_url, version=Version.v365, authcookie=authcookie)
