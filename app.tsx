@@ -1,3 +1,8 @@
+# Write the organized data to a new CSV file
+with open('output.csv', 'w') as output_file:
+    for row in organized_data:
+        output_file.write(','.join(row) + '\n')
+
 # Read the CSV file as a text file
 with open('your_csv_file.csv', 'r') as file:
     csv_text = file.read()
