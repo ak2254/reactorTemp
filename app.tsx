@@ -1,27 +1,36 @@
-import openpyxl
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-from datetime import datetime
+# Split the text into lines
+lines = csv_text.split('\n')
 
-# Specify the path to your Excel file
-excel_file_path = "path/to/your/excel/file.xlsx"
+# Initialize variables to keep track of rows and columns
+num_columns = 50
+current_row = 0
+current_column = 0
 
-# Load the existing Excel file
-wb = openpyxl.load_workbook(excel_file_path)
+# Create a list to store the organized data
+organized_data = []
 
-# Select the worksheet you want to work with
-ws = wb.active
+# Iterate through the lines of the CSV text
+for line in lines:
+    # Split the line into columns based on commas
+    columns = line.split(',')
 
-# Calculate the new values for the row to be inserted
-last_row = ws.max_row
-new_id = last_row + 1
-new_value = 50
-new_version = ws.cell(row=last_row, column=3).value + 1
-new_timestamp = datetime.now()
+    # Iterate through the columns
+    for column in columns:
+        # Add the current column to the current row
+        if current_row < len(organized_data):
+            organized_data[current_row].append(column)
+        else:
+            # If the current row doesn't exist yet, create it
+            organized_data.append([column])
 
-# Create a new row
-new_row_data = [new_id, new_value, new_version, new_timestamp]
-ws.append(new_row_data)
+        # Move to the next column
+        current_column += 1
 
-# Save the updated Excel file
-wb.save(excel_file_path)
+        # If we've reached the desired number of columns, move to the next row
+        if current_column == num_columns:
+            current_row += 1
+            current_column = 0
+
+# Print the organized data (you can also write it to a new CSV file)
+for row in organized_data:
+    print(','.join(row))
