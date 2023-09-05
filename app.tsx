@@ -1,3 +1,7 @@
+# Read the CSV file as a text file
+with open('your_csv_file.csv', 'r') as file:
+    csv_text = file.read()
+
 # Split the text into lines
 lines = csv_text.split('\n')
 
