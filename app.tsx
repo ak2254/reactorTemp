@@ -16,3 +16,4 @@ rows_not_in_df2 = merged_df[merged_df["timestamp_sheet2"].isna()]
 
 # Now, rows_not_in_df2 contains the rows from df1 that are not in df2 based on the "timestamp" column
 print(rows_not_in_df2)
+filtered_df = merged_df[merged_df["alarm type"] != "return"]
