@@ -1,45 +1,18 @@
-# Write the organized data to a new CSV file
-with open('output.csv', 'w') as output_file:
-    for row in organized_data:
-        output_file.write(','.join(row) + '\n')
 
-# Read the CSV file as a text file
-with open('your_csv_file.csv', 'r') as file:
-    csv_text = file.read()
+import pandas as pd
 
-# Split the text into lines
-lines = csv_text.split('\n')
+# Assuming you have DataFrames df1 and df2
+# Rename the "timestamp" column in df1 to "timestamp_sheet1"
+df1 = df1.rename(columns={"timestamp": "timestamp_sheet1"})
 
-# Initialize variables to keep track of rows and columns
-num_columns = 50
-current_row = 0
-current_column = 0
+# Rename the "timestamp" column in df2 to "timestamp_sheet2"
+df2 = df2.rename(columns={"timestamp": "timestamp_sheet2"})
 
-# Create a list to store the organized data
-organized_data = []
+# Merge df1 and df2 on the "timestamp_sheet1" and "timestamp_sheet2" columns with a left join
+merged_df = pd.merge(df1, df2, left_on="timestamp_sheet1", right_on="timestamp_sheet2", how="left")
 
-# Iterate through the lines of the CSV text
-for line in lines:
-    # Split the line into columns based on commas
-    columns = line.split(',')
+# Find rows in df1 that are not in df2
+rows_not_in_df2 = merged_df[merged_df["timestamp_sheet2"].isna()]
 
-    # Iterate through the columns
-    for column in columns:
-        # Add the current column to the current row
-        if current_row < len(organized_data):
-            organized_data[current_row].append(column)
-        else:
-            # If the current row doesn't exist yet, create it
-            organized_data.append([column])
-
-        # Move to the next column
-        current_column += 1
-
-        # If we've reached the desired number of columns, move to the next row
-        if current_column == num_columns:
-            current_row += 1
-            current_column = 0
-
-# Print the organized data (you can also write it to a new CSV file)
-for row in organized_data:
-    print(','.join(row))
+# Now, rows_not_in_df2 contains the rows from df1 that are not in df2 based on the "timestamp" column
+print(rows_not_in_df2)
