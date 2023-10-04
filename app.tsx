@@ -1,8 +1,17 @@
- CASE WHEN (
-        SELECT COUNT(*)
-        FROM ' + SUBSTRING(@tablePath, 1, (LEN(@tablePath) - CHARINDEX('[', REVERSE(@tablePath)))) + '[_ClearedAlarms] c2
-        WHERE c2.[tag] = c.[tag]
-        AND c2.[AlaramType] = c.[AlaramType]
-        AND c2.[AlarmTime] BETWEEN DATEADD(HOUR, -24, c.[AlarmTime]) AND c.[AlarmTime]
-        AND c2.[AlarmTime] <= c.[AlarmTime]
-    ) > 3 THEN ''Flagged'' ELSE ''Not Flagged'' END AS [abthree]
+ SELECT
+    tag,
+    alarm_type,
+    count(*) AS occurrence_count,
+    CASE WHEN occurrence_count > 3 OR past_24_hour_occurrence_count > 3 THEN 'Flagged' ELSE 'Not Flagged' END AS [abthree]
+FROM
+    @TimeInAlaramResults
+GROUP BY
+    tag,
+    alarm_type
+HAVING
+    occurrence_count > 3
+    AND alarm_time <= end_of_day
+ORDER BY
+    tag,
+    alarm_type,
+    alarm_time ASC;
