@@ -1,14 +1,8 @@
-WITH AlarmCounts AS (
-    SELECT
-        [Tag],
-        [AlaramType],
-        MIN([AlaramTime]) AS [FirstAlarmTime],
-        COUNT(*) AS [Count]
-    FROM ' + SUBSTRING(@tablePath, 1, (LEN(@tablePath) - CHARINDEX('[', REVERSE(@tablePath)))) + '[_ClearedAlrams] c
-    WHERE
-        c.[AlarmTime] BETWEEN @startDate AND DATEADD(HOUR, 24, @startDate)
-        AND (c.[SeqNo2] IS NOT NULL OR c.[Time2] IS NULL) -- Include alarms without a clear time
-    GROUP BY
-        [Tag],
-        [AlaramType]
-)
+ CASE WHEN (
+        SELECT COUNT(*)
+        FROM ' + SUBSTRING(@tablePath, 1, (LEN(@tablePath) - CHARINDEX('[', REVERSE(@tablePath)))) + '[_ClearedAlarms] c2
+        WHERE c2.[tag] = c.[tag]
+        AND c2.[AlaramType] = c.[AlaramType]
+        AND c2.[AlarmTime] BETWEEN DATEADD(HOUR, -24, c.[AlarmTime]) AND c.[AlarmTime]
+        AND c2.[AlarmTime] <= c.[AlarmTime]
+    ) > 3 THEN ''Flagged'' ELSE ''Not Flagged'' END AS [abthree]
