@@ -1,16 +1,15 @@
- WHERE (
+WITH RankedAlarms AS (
+    SELECT
+        t.*,
+        ROW_NUMBER() OVER (PARTITION BY t.[tag], t.[AlaramType] ORDER BY t.[AlarmTime]) AS RowNum
+    FROM @TimeInAlaramResults t
+)
+UPDATE RankedAlarms
+SET [abthree] = 'Flagged'
+WHERE (
     SELECT COUNT(*) 
-    FROM @TimeInAlaramResults c2
-    WHERE c2.[tag] = t.[tag]
-    AND c2.[AlaramType] = t.[AlaramType]
-    AND c2.[AlarmTime] BETWEEN DATEADD(HOUR, -24, t.[AlarmTime]) AND t.[AlarmTime]
-) >= 3
-OR (
-    SELECT COUNT(*) 
-    FROM @TimeInAlaramResults c2
-    WHERE c2.[tag] = t.[tag]
-    AND c2.[AlaramType] = t.[AlaramType]
-    AND c2.[AlarmTime] <= DATEADD(HOUR, -24, t.[AlarmTime])
-    AND c2.[AlarmTime] + INTERVAL 24 HOUR >= t.[AlarmTime]
+    FROM RankedAlarms c2
+    WHERE c2.[tag] = RankedAlarms.[tag]
+    AND c2.[AlaramType] = RankedAlarms.[AlaramType]
+    AND c2.RowNum <= RankedAlarms.RowNum
 ) >= 3;
-
