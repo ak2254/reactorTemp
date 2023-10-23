@@ -1,15 +1,12 @@
-WITH RankedAlarms AS (
-    SELECT
-        t.*,
-        ROW_NUMBER() OVER (PARTITION BY t.[tag], t.[AlaramType] ORDER BY t.[AlarmTime]) AS RowNum
-    FROM @TimeInAlaramResults t
+ClearCollect(CombinedCollection,
+    ForAll(DataSet1, // Iterate through the first dataset
+        ForAll(Filter(DataSet2, Project = DataSet1.Project && Resource = DataSet1.Resource), // Filter the second dataset based on Project and Resource
+            If(taskType = "daily", // Check if the taskType is "daily"
+                For(var i = DateAdd(DateValue(DataSet1.[Start Date]), daystart - 1), i <= DataSet1.[End Date], i + 1, // Create daily samples starting from the "start day"
+                    { "Sample date": i, "SAP": SAP, "Project": Project, "Sample no": SampleNo }
+                ),
+                { "Sample date": DateAdd(DateValue(DataSet1.[End Date]), -DayStart), "SAP": SAP, "Project": Project, "Sample no": SampleNo } // Create last day samples
+            )
+        )
+    )
 )
-UPDATE RankedAlarms
-SET [abthree] = 'Flagged'
-WHERE (
-    SELECT COUNT(*) 
-    FROM RankedAlarms c2
-    WHERE c2.[tag] = RankedAlarms.[tag]
-    AND c2.[AlaramType] = RankedAlarms.[AlaramType]
-    AND c2.RowNum <= RankedAlarms.RowNum
-) >= 3;
