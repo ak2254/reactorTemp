@@ -1,82 +1,79 @@
-import pyxl
+import pandas as pd
 import datetime as dt
 
-# Open the Excel file
-xls = pyxl.load_workbook("pp.xlms")
-sheet = xls["PP"]
+# Load Excel file
+xls = pd.ExcelFile("pp.xlms")
+df = pd.read_excel(xls, "PP")
 
-# Fetch the headers
-headers = [cell.value for cell in sheet[1]]
+# Extract relevant columns for Bottle Batch and Bottle Ship
+dfbb = df[["Project", "Run ID", "Number of Bottles", "Product No", "Batch#", "Bottle/Bag Date", "Comments"]]
+dfsh = df[["Project", "Run ID", "Number of Bottles", "Product No", "Batch#", "BDS/BDI Ship Date", "Comments"]]
 
-# Find the index of each column
-columns = {
-    "Project": headers.index("Project"),
-    "Run ID": headers.index("Run ID"),
-    "Number of Bottles": headers.index("Number of Bottles"),
-    "Product No": headers.index("Product No"),
-    "Batch#": headers.index("Batch#"),
-    "Bottle/Bag Date": headers.index("Bottle/Bag Date"),
-    "BDS/BDI Ship Date": headers.index("BDS/BDI Ship Date"),
-    "Comments": headers.index("Comments"),
+# Set default values for new columns
+default_values = {
+    "PackageType": "Bottle",
+    "BottleUnits": 0,
+    "Quarantine": "FALSE",
+    "NCR": "FALSE",
 }
 
-# Extracting data from the Excel sheet
-data = sheet.iter_rows(min_row=2, values_only=True)
+# Update default values for Bottle Batch
+dfbb = dfbb.assign(Event="BB", **default_values)
+dfbb.rename(columns={"Number of Bottles": "PackageQty", "Bottle/Bag Date": "EventDate"}, inplace=True)
 
-# Initialize empty lists to store modified data
-dfbb_data = []
-dfsh_data = []
+# Update default values for Bottle Ship
+dfsh = dfsh.assign(Event="Ship", **default_values)
+dfsh.rename(columns={"Number of Bottles": "PackageQty", "BDS/BDI Ship Date": "EventDate"}, inplace=True)
 
-# Initialize cumulative variable
-cum = 0
+# Process Bottle Batch and Bottle Ship data
+for df_temp in [dfbb, dfsh]:
+    for index, row in df_temp.iterrows():
+        code = str(row["PackageQty"])
+        iblank = code.find("Bag")
+        comments = str(row["Comments"])
 
-# Create a new sheet for modified data
-dfall_sheet = xls.create_sheet("dfall_modified")
+        # Check for Quarantine
+        underq = comments.lower().find("under q")
+        if underq > -1:
+            underq = comments.lower().find("quarantine")
+            if underq == -1:
+                df_temp.at[index, "Quarantine"] = "True"
+        else:
+            word_quarantine = comments.lower().find("quarantine")
+            if word_quarantine > -1:
+                df_temp.at[index, "Quarantine"] = "TRUE"
 
-# Write headers to the new sheet
-dfall_sheet.append(headers + ["PackageType", "PackageQty", "BottleUnits", "Quarnatine", "NCR", "Event", "EventDate", "CumBottleUnits"])
+        # Check for NCR
+        ncr_present = comments.find("NCR")
+        if ncr_present > -1:
+            df_temp.at[index, "NCR"] = "TRUE"
 
-# Iterate through rows and make modifications
-for row in data:
-    project, run_id, num_bottles, product_no, batch, date_bb, date_sh, comments = row
-
-    # Apply modifications for dfbb
-    if "Bag" in str(num_bottles):
-        iblank = str(num_bottles).find("Bag")
+        # Process Bag information
         if iblank > -1:
-            # Modify PackageType for Bag in dfbb
-            row = list(row) + ["Bag", -int(str(num_bottles)[0:iblank - 1]), -int(str(num_bottles)[0:iblank - 1]) * 7, "FALSE", "FALSE", "BB"]
+            df_temp.at[index, "PackageType"] = "Bag"
+            df_temp.at[index, "PackageQty"] = int(code[0:iblank - 1])
+            df_temp.at[index, "BottleUnits"] = int(code[0:iblank - 1]) * 7
+        else:
+            df_temp.at[index, "BottleUnits"] = row["PackageQty"]
 
-    # Apply modifications for dfsh
-    if "under q" in str(comments).lower():
-        underq = str(comments).lower().find("under q")
-        if underq == -1:
-            # Modify Quarantine for under q in dfsh
-            row = list(row) + ["Bottle", 0, 0, "TRUE", "FALSE", "Ship"]
+# Convert date columns to datetime
+dfbb["EventDate"] = pd.to_datetime(dfbb["EventDate"])
+dfsh["EventDate"] = pd.to_datetime(dfsh["EventDate"]).dt.date
 
-    # Convert date columns to datetime objects
-    if date_bb:
-        date_bb = dt.datetime.strptime(str(date_bb), "%Y-%m-%d")
-        row[columns["Bottle/Bag Date"]] = date_bb.date()
+# Filter rows with EventDate greater than today
+dfsh = dfsh[dfsh["EventDate"] > dt.date.today()]
+dfbb = dfbb[dfbb["EventDate"] > dt.date.today()]
 
-    if date_sh:
-        date_sh = dt.datetime.strptime(str(date_sh), "%Y-%m-%d")
-        row[columns["BDS/BDI Ship Date"]] = date_sh.date()
+# Drop first row
+dfsh.drop(dfsh.index[0], axis=0, inplace=True)
+dfbb.drop(dfbb.index[0], axis=0, inplace=True)
 
-    # Add the modified row to the respective list
-    if "Bottle" in str(row[columns["PackageType"]]):
-        dfbb_data.append(row + ["BB", row[columns["Bottle/Bag Date"]]])
-    else:
-        dfsh_data.append(row + ["Ship", row[columns["BDS/BDI Ship Date"]]])
+# Concatenate DataFrames
+dfall = pd.concat([dfbb, dfsh], ignore_index=True)
 
-# Calculate CumBottleUnits for dfall
-for row in dfbb_data + dfsh_data:
-    cum += row[columns["BottleUnits"]]
-    row += [cum]
+# Sort by EventDate
+dfall.sort_values(by=["EventDate"], inplace=True)
 
-# Write modified data to the new sheet
-for row in dfbb_data + dfsh_data:
-    dfall_sheet.append(row)
+# Calculate cumulative BottleUnits
+dfall["CumBottleUnits"] = dfall["BottleUnits"].cumsum()
 
-# Save the modified Excel file
-xls.save("modified_pp.xlms")
