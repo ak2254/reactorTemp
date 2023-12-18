@@ -27,6 +27,15 @@ data = sheet.iter_rows(min_row=2, values_only=True)
 dfbb_data = []
 dfsh_data = []
 
+# Initialize cumulative variable
+cum = 0
+
+# Create a new sheet for modified data
+dfall_sheet = xls.create_sheet("dfall_modified")
+
+# Write headers to the new sheet
+dfall_sheet.append(headers + ["PackageType", "PackageQty", "BottleUnits", "Quarnatine", "NCR", "Event", "EventDate", "CumBottleUnits"])
+
 # Iterate through rows and make modifications
 for row in data:
     project, run_id, num_bottles, product_no, batch, date_bb, date_sh, comments = row
@@ -45,26 +54,29 @@ for row in data:
             # Modify Quarantine for under q in dfsh
             row = list(row) + ["Bottle", 0, 0, "TRUE", "FALSE", "Ship"]
 
+    # Convert date columns to datetime objects
+    if date_bb:
+        date_bb = dt.datetime.strptime(str(date_bb), "%Y-%m-%d")
+        row[columns["Bottle/Bag Date"]] = date_bb.date()
+
+    if date_sh:
+        date_sh = dt.datetime.strptime(str(date_sh), "%Y-%m-%d")
+        row[columns["BDS/BDI Ship Date"]] = date_sh.date()
+
     # Add the modified row to the respective list
     if "Bottle" in str(row[columns["PackageType"]]):
-        dfbb_data.append(row)
+        dfbb_data.append(row + ["BB", row[columns["Bottle/Bag Date"]]])
     else:
-        dfsh_data.append(row)
+        dfsh_data.append(row + ["Ship", row[columns["BDS/BDI Ship Date"]]])
 
-# Create new sheets for modified data
-dfbb_sheet = xls.create_sheet("dfbb_modified")
-dfsh_sheet = xls.create_sheet("dfsh_modified")
+# Calculate CumBottleUnits for dfall
+for row in dfbb_data + dfsh_data:
+    cum += row[columns["BottleUnits"]]
+    row += [cum]
 
-# Write headers to the new sheets
-dfbb_sheet.append(headers + ["PackageType", "PackageQty", "BottleUnits", "Quarnatine", "NCR", "Event"])
-dfsh_sheet.append(headers + ["PackageType", "PackageQty", "BottleUnits", "Quarnatine", "NCR", "Event"])
-
-# Write modified data to the new sheets
-for row in dfbb_data:
-    dfbb_sheet.append(row)
-
-for row in dfsh_data:
-    dfsh_sheet.append(row)
+# Write modified data to the new sheet
+for row in dfbb_data + dfsh_data:
+    dfall_sheet.append(row)
 
 # Save the modified Excel file
 xls.save("modified_pp.xlms")
