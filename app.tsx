@@ -1,1 +1,5 @@
-Undertake the development of a full-stack application dedicated to monitoring PowerApps, aiming to elevate proficiency by navigating the complexities of the entire development stack. This project will provide practical insights, fostering a deeper understanding of application architecture, real-time data integration, and user-friendly interface design.
+Concatenate(
+                     Left(OriginalName, Find(",", OriginalName) - 1), // Lastname
+                     ", ",
+                     Mid(OriginalName, Find(",", OriginalName) + 2, Find(" ", OriginalName, Find(",", OriginalName) + 2) - Find(",", OriginalName) - 2) // Firstname
+                 )
