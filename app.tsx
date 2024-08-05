@@ -39,3 +39,34 @@ VAR RecursiveHierarchy =
     )
 RETURN
     RecursiveHierarchy
+
+
+
+
+
+
+VAR CurrentManager = 
+            CALCULATE(
+                MAX(Combined[ManagerID]),
+                FILTER(
+                    Combined,
+                    Combined[UserID] = CurrentUser
+                )
+            )
+        VAR ManagerChain =
+            PATH(
+                CurrentManager,
+                CurrentUser
+            )
+        RETURN
+            ADDCOLUMNS(
+                FILTER(
+                    Combined,
+                    PATHCONTAINS(ManagerChain, Combined[UserID])
+                ),
+                "PathUserID", [UserID],
+                "PathManagerID", [ManagerID]
+            )
+    )
+RETURN
+    DISTINCT(RecursiveHierarchy)
