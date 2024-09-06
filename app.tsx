@@ -1,98 +1,122 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app  # Assuming your FastAPI app is in app.main
-from app.models.notification_request import NotificationRequestModel
-from app.utils.database import get_db, Base
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from app.main import app  # assuming this is where your FastAPI app is defined
+from app.models import Notification  # assuming this is your Notification model
+from app.schemas.notification_request import NotificationRequestCreate
 
-# Create a test database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Override the get_db dependency to use the test database
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-
-# Create the test client
 client = TestClient(app)
 
-@pytest.fixture(autouse=True)
-def setup_and_teardown():
-    Base.metadata.create_all(bind=engine)  # Create the tables
-    yield
-    Base.metadata.drop_all(bind=engine)  # Drop the tables after tests
-
-def test_create_notification_request_success():
-    """
-    Test that a notification request is successfully created and stored in the database.
-    """
+@pytest.mark.asyncio
+async def test_create_notification_request_success(db_session):
     request_data = {
-        "client_path": "some/path",
-        "msg": "Test notification",
+        "client_path": "/path/to/client",
+        "msg": "Test message",
         "groups": ["group1", "group2"],
         "destinations": ["dest1", "dest2"],
-        "subject": "Test Subject"
+        "subject": "Test subject"
     }
-
-    response = client.post("/notification-requests", json=request_data)
-    
+    response = await client.post("/notification-requests", json=request_data)
     assert response.status_code == 200
-    assert response.json()["status"] == "sent"
+    response_data = response.json()
+    assert response_data["status"] == "success"
+    assert response_data["client_path"] == request_data["client_path"]
+    assert response_data["msg"] == request_data["msg"]
 
-def test_create_notification_request_missing_fields():
-    """
-    Test that a notification request fails when required fields are missing.
-    """
+@pytest.mark.asyncio
+async def test_create_notification_request_telalert_failure(db_session, mocker):
     request_data = {
-        "msg": "Test notification",
-        "groups": ["group1", "group2"]
-    }
-
-    response = client.post("/notification-requests", json=request_data)
-    
-    assert response.status_code == 422  # Unprocessable Entity
-
-def test_create_notification_request_invalid_data():
-    """
-    Test that a notification request fails with invalid data.
-    """
-    request_data = {
-        "client_path": 1234,  # Invalid data type, should be a string
-        "msg": "Test notification",
+        "client_path": "/path/to/client",
+        "msg": "Test message",
         "groups": ["group1", "group2"],
         "destinations": ["dest1", "dest2"],
-        "subject": "Test Subject"
+        "subject": "Test subject"
     }
-
-    response = client.post("/notification-requests", json=request_data)
+    mocker.patch("app.services.telalert_service.notify", side_effect=Exception("TelAlert failure"))
     
-    assert response.status_code == 422  # Unprocessable Entity
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 500
+    response_data = response.json()
+    assert response_data["detail"] == "Failed to send notification."
 
-def test_create_notification_request_service_failure():
-    """
-    Test the scenario where the TelAlert service fails to send the notification.
-    """
+@pytest.mark.asyncio
+async def test_create_notification_request_db_error(db_session, mocker):
     request_data = {
-        "client_path": "some/path",
-        "msg": "Test notification",
+        "client_path": "/path/to/client",
+        "msg": "Test message",
         "groups": ["group1", "group2"],
         "destinations": ["dest1", "dest2"],
-        "subject": "Test Subject"
+        "subject": "Test subject"
     }
+    mocker.patch("app.crud.notification_requests.create_notification_request", side_effect=SQLAlchemyError("DB error"))
+    
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 500
+    response_data = response.json()
+    assert response_data["detail"] == "Failed to create notification request."
 
-    # Mock the notify function to simulate failure
-    with pytest.raises(Exception):
-        response = client.post("/notification-requests", json=request_data)
+@pytest.mark.asyncio
+async def test_create_notification_request_invalid_data(db_session):
+    request_data = {
+        "client_path": "",  # Invalid: empty path
+        "msg": "Test message",
+        "groups": "invalid_groups_format",  # Invalid: not a list
+        "destinations": ["dest1", "dest2"],
+        "subject": "Test subject"
+    }
+    
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 422  # Unprocessable Entity
+    response_data = response.json()
+    assert "client_path" in response_data["detail"][0]["loc"]
+    assert "groups" in response_data["detail"][0]["loc"]
 
-        assert response.status_code == 500  # Internal Server Error
-        assert response.json()["detail"] == "Failed to send notification."
+@pytest.mark.asyncio
+async def test_create_notification_request_optional_fields_omitted(db_session):
+    request_data = {
+        "client_path": "/path/to/client",
+        "msg": "Test message",
+    }
+    
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["status"] == "success"
+    assert response_data["groups"] is None
+    assert response_data["destinations"] is None
+    assert response_data["subject"] is None
 
+@pytest.mark.asyncio
+async def test_notification_created_in_database(db_session):
+    request_data = {
+        "client_path": "/path/to/client",
+        "msg": "Test message",
+        "groups": ["group1", "group2"],
+        "destinations": ["dest1", "dest2"],
+        "subject": "Test subject"
+    }
+    
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 200
+    
+    notification = db_session.query(Notification).filter_by(request_id=response.json()["id"]).first()
+    assert notification is not None
+    assert notification.status == "success"
+    assert notification.msg == request_data["msg"]
+
+@pytest.mark.asyncio
+async def test_create_notification_request_empty_groups_destinations(db_session):
+    request_data = {
+        "client_path": "/path/to/client",
+        "msg": "Test message",
+        "groups": [],
+        "destinations": [],
+        "subject": "Test subject"
+    }
+    
+    response = await client.post("/notification-requests", json=request_data)
+    assert response.status_code == 200
+    response_data = response.json()
+    assert response_data["status"] == "success"
+    assert response_data["groups"] is None
+    assert response_data["destinations"] is None
