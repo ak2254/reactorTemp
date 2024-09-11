@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 from dateutil import parser
 
-# Sample JSON data
+# Sample JSON data (replace with your actual JSON data)
 pswdata_json = '''
 [
     {"email": "usera@example.com", "comments": "User A comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01T05:00:00Z"},
@@ -96,56 +96,47 @@ processed_data = [process_pswdata_entry(entry, pswdatechange) for entry in pswda
 # File path for the CSV file
 csv_file = "password_data.csv"
 
-# Function to update or add rows in the CSV file
-def update_or_create_csv(csv_file, processed_data):
-    # Check if the CSV file exists
+# Function to read CSV into a dictionary (skipped if the file doesn't exist)
+def read_csv_to_dict(csv_file):
+    data = {}
     if os.path.exists(csv_file):
-        # Read the existing data
         with open(csv_file, mode='r', newline='') as file:
             reader = csv.DictReader(file)
-            existing_rows = list(reader)
-        
-        # Create a list to hold updated rows
-        updated_rows = []
+            for row in reader:
+                data[row['email']] = row
+    return data
 
-        # Process each item in the processed data
-        for item in processed_data:
-            email_found = False
-            for row in existing_rows:
-                if row['email'] == item['email']:
-                    email_found = True
-                    row['previous_status'] = row['current_status']
-                    row['current_status'] = item['risk_status']
-                    updated_rows.append(row)
-                    break
-            
-            if not email_found:
-                item['previous_status'] = None
-                item['current_status'] = item['risk_status']
-                updated_rows.append(item)
-        
-        # Write back the updated rows to the CSV
-        with open(csv_file, mode='w', newline='') as file:
-            fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
-                          'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
-                          'previous_status', 'current_status']
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(updated_rows)
+# Function to update or add rows in the CSV file
+def update_or_create_csv(csv_file, processed_data):
+    # Load existing CSV data into a dictionary for fast lookups
+    existing_data = read_csv_to_dict(csv_file) if os.path.exists(csv_file) else {}
     
-    else:
-        # If the file does not exist, create it and write the data with None as previous status
-        with open(csv_file, mode='w', newline='') as file:
-            fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
-                          'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
-                          'previous_status', 'current_status']
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            for item in processed_data:
-                item['previous_status'] = None
-                item['current_status'] = item['risk_status']
-                writer.writerow(item)
+    # List to hold updated or new rows
+    updated_rows = []
+
+    # Process each item in the processed data
+    for item in processed_data:
+        email = item['email']
+        
+        if email in existing_data:
+            # Email exists, update the previous and current status
+            existing_data[email]['previous_status'] = existing_data[email]['current_status']
+            existing_data[email]['current_status'] = item['risk_status']
+            updated_rows.append(existing_data[email])
+        else:
+            # New entry, add it with previous_status as None
+            item['previous_status'] = None
+            item['current_status'] = item['risk_status']
+            updated_rows.append(item)
+    
+    # Write all rows back to the CSV file
+    with open(csv_file, mode='w', newline='') as file:
+        fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
+                      'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
+                      'previous_status', 'current_status']
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(updated_rows)
 
 # Update or create the CSV file
 update_or_create_csv(csv_file, processed_data)
