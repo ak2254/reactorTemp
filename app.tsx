@@ -1,11 +1,14 @@
+import os
+import csv
 import json
 from datetime import datetime, timedelta
+from dateutil import parser
 
 # Sample JSON data
 pswdata_json = '''
 [
-    {"comments": "User A comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01", "extra_column1": "extra1"},
-    {"comments": "User B comment", "current": "yes", "first": "2023-02-20", "last": "2023-07-15", "datepwchange": "2023-07-15", "extra_column2": "extra2"}
+    {"email": "usera@example.com", "comments": "User A comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01T05:00:00Z"},
+    {"email": "userb@example.com", "comments": "User B comment", "current": "yes", "first": "2023-02-20", "last": "2023-07-15", "datepwchange": "2023-07-15T05:00:00Z"}
 ]
 '''
 
@@ -21,7 +24,7 @@ pswdatechange_json = '''
 pswdata = json.loads(pswdata_json)
 pswdatechange = json.loads(pswdatechange_json)
 
-# Convert string dates to datetime objects for comparison
+# Convert string dates in pswdatechange to datetime objects for comparison
 def convert_dates(data):
     for entry in data:
         entry['start_date'] = datetime.strptime(entry['start_date'], "%Y-%m-%d")
@@ -34,6 +37,7 @@ pswdatechange = convert_dates(pswdatechange)
 def process_pswdata_entry(entry, pswdatechange):
     # Keep only selected columns from the original JSON
     selected_columns = {
+        'email': entry['email'],
         'comments': entry['comments'],
         'current': entry['current'],
         'first': entry['first'],
@@ -41,8 +45,8 @@ def process_pswdata_entry(entry, pswdatechange):
         'datepwchange': entry['datepwchange']
     }
     
-    # Convert the 'datepwchange' to a datetime object
-    date_pwchange = datetime.strptime(entry['datepwchange'], "%Y-%m-%d")
+    # Parse the 'datepwchange' using dateutil to handle ISO 8601 format
+    date_pwchange = parser.parse(entry['datepwchange'])
     
     # Find the matching quarter based on 'datepwchange'
     assigned_quarter = None
@@ -59,7 +63,7 @@ def process_pswdata_entry(entry, pswdatechange):
     else:
         next_reset_date = None
     
-    # Calculate the risk status based on the next reset date
+    # Calculate the risk status and days until next reset
     if next_reset_date:
         days_until_reset = (next_reset_date - datetime.today()).days
         
@@ -72,14 +76,16 @@ def process_pswdata_entry(entry, pswdatechange):
         else:
             risk_status = "On Track"
     else:
+        days_until_reset = None
         risk_status = "No Matching Quarter"
     
-    # Add the new calculated columns
+    # Add the new calculated columns, including days_until_next_reset
     selected_columns.update({
         'assigned_quarter': assigned_quarter,
         'assigned_quarter_end_date': assigned_quarter_end_date.strftime("%Y-%m-%d") if assigned_quarter_end_date else None,
         'next_reset_date': next_reset_date.strftime("%Y-%m-%d") if next_reset_date else None,
-        'risk_status': risk_status
+        'risk_status': risk_status,
+        'days_until_next_reset': days_until_reset
     })
     
     return selected_columns
@@ -87,6 +93,61 @@ def process_pswdata_entry(entry, pswdatechange):
 # Process each entry in pswdata
 processed_data = [process_pswdata_entry(entry, pswdatechange) for entry in pswdata]
 
-# Print the processed data
-for item in processed_data:
-    print(item)
+# File path for the CSV file
+csv_file = "password_data.csv"
+
+# Function to update or add rows in the CSV file
+def update_or_create_csv(csv_file, processed_data):
+    # Check if the CSV file exists
+    if os.path.exists(csv_file):
+        # Read the existing data
+        with open(csv_file, mode='r', newline='') as file:
+            reader = csv.DictReader(file)
+            existing_rows = list(reader)
+        
+        # Create a list to hold updated rows
+        updated_rows = []
+
+        # Process each item in the processed data
+        for item in processed_data:
+            email_found = False
+            for row in existing_rows:
+                if row['email'] == item['email']:
+                    email_found = True
+                    row['previous_status'] = row['current_status']
+                    row['current_status'] = item['risk_status']
+                    updated_rows.append(row)
+                    break
+            
+            if not email_found:
+                item['previous_status'] = None
+                item['current_status'] = item['risk_status']
+                updated_rows.append(item)
+        
+        # Write back the updated rows to the CSV
+        with open(csv_file, mode='w', newline='') as file:
+            fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
+                          'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
+                          'previous_status', 'current_status']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(updated_rows)
+    
+    else:
+        # If the file does not exist, create it and write the data with None as previous status
+        with open(csv_file, mode='w', newline='') as file:
+            fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
+                          'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
+                          'previous_status', 'current_status']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for item in processed_data:
+                item['previous_status'] = None
+                item['current_status'] = item['risk_status']
+                writer.writerow(item)
+
+# Update or create the CSV file
+update_or_create_csv(csv_file, processed_data)
+
+print(f"Data written to {csv_file} successfully.")
