@@ -1,8 +1,7 @@
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.client_credential import ClientCredential
-from io import StringIO
+import io
 import csv
-import json
 from datetime import datetime, timedelta
 from dateutil import parser
 
@@ -16,11 +15,11 @@ csv_file_url = "/sites/your-site/Shared Documents/password_data.csv"  # Path to 
 credentials = ClientCredential(client_id, client_secret)
 ctx = ClientContext(sharepoint_site_url).with_credentials(credentials)
 
-# Function to download CSV file from SharePoint
-def download_csv_from_sharepoint(ctx, csv_file_url):
+# Function to download CSV file from SharePoint and write to binaryIO handle
+def download_csv_from_sharepoint(ctx, csv_file_url, handle):
     response = ctx.web.get_file_by_server_relative_url(csv_file_url).download().execute_query()
-    file_content = response.content.decode('utf-8')  # Decode to string
-    return file_content
+    handle.write(response.content)  # Write binary content to the binaryIO handle
+    handle.seek(0)  # Move the cursor back to the beginning of the file
 
 # Function to upload CSV file to SharePoint
 def upload_csv_to_sharepoint(ctx, csv_file_url, csv_content):
@@ -28,20 +27,29 @@ def upload_csv_to_sharepoint(ctx, csv_file_url, csv_content):
     target_file = ctx.web.get_file_by_server_relative_url(csv_file_url)
     target_file.upload(file_content).execute_query()
 
-# Download the CSV file from SharePoint
-csv_content = download_csv_from_sharepoint(ctx, csv_file_url)
+# Simulate the binaryIO handle using io.BytesIO
+binary_io_handle = io.BytesIO()
 
-# Load CSV content into a list of dictionaries
+# Download the CSV file from SharePoint into the binaryIO object
+download_csv_from_sharepoint(ctx, csv_file_url, binary_io_handle)
+
+# Decode the binaryIO content to string and process it
+csv_string = binary_io_handle.getvalue().decode('utf-8')
+
+# Read the CSV content using csv.DictReader
+csv_file = io.StringIO(csv_string)
+reader = csv.DictReader(csv_file)
+
+# Load existing data from CSV into a dictionary
 existing_data = {}
-reader = csv.DictReader(StringIO(csv_content))
 for row in reader:
     existing_data[row['email']] = row
 
-# Process new data (simulated JSON input)
+# Sample data for processing (simulated JSON input)
 pswdata_json = '''
 [
-    {"email": "usera@example.com", "comments": "User A comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01T05:00:00Z"},
-    {"email": "userb@example.com", "comments": "User B comment", "current": "yes", "first": "2023-02-20", "last": "2023-07-15", "datepwchange": "2023-07-15T05:00:00Z"}
+    {"email": "usera@example.com", "comments": "User A updated comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01T05:00:00Z"},
+    {"email": "userb@example.com", "comments": "User B updated comment", "current": "yes", "first": "2023-02-20", "last": "2023-07-15", "datepwchange": "2023-07-15T05:00:00Z"}
 ]
 '''
 
@@ -53,7 +61,7 @@ pswdatechange_json = '''
 ]
 '''
 
-# Convert string dates in pswdatechange to datetime objects
+# Convert string dates in pswdatechange to datetime objects for comparison
 def convert_dates(data):
     for entry in data:
         entry['start_date'] = datetime.strptime(entry['start_date'], "%Y-%m-%d")
@@ -62,7 +70,7 @@ def convert_dates(data):
 
 pswdatechange = convert_dates(json.loads(pswdatechange_json))
 
-# Function to process password data
+# Function to process password data entries
 def process_pswdata_entry(entry, pswdatechange):
     selected_columns = {
         'email': entry['email'],
@@ -102,9 +110,10 @@ def process_pswdata_entry(entry, pswdatechange):
     })
     return selected_columns
 
-# Process each new entry and update existing data
+# Process new data (this is simulated data from a JSON input)
 processed_data = [process_pswdata_entry(entry, pswdatechange) for entry in json.loads(pswdata_json)]
 
+# Update the existing data with new information
 for item in processed_data:
     email = item['email']
     if email in existing_data:
@@ -116,8 +125,9 @@ for item in processed_data:
         existing_data[email] = item
 
 # Write updated data back to CSV format
-output = StringIO()
-writer = csv.DictWriter(output, fieldnames=existing_data[next(iter(existing_data))].keys())
+output = io.StringIO()
+fieldnames = existing_data[next(iter(existing_data))].keys()
+writer = csv.DictWriter(output, fieldnames=fieldnames)
 writer.writeheader()
 writer.writerows(existing_data.values())
 csv_updated_content = output.getvalue()
