@@ -1,10 +1,43 @@
-import os
+from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.client_credential import ClientCredential
+from io import StringIO
 import csv
 import json
 from datetime import datetime, timedelta
 from dateutil import parser
 
-# Sample JSON data (replace with your actual JSON data)
+# SharePoint authentication details
+sharepoint_site_url = "https://your-sharepoint-site-url"
+client_id = "your-client-id"
+client_secret = "your-client-secret"
+csv_file_url = "/sites/your-site/Shared Documents/password_data.csv"  # Path to the CSV file on SharePoint
+
+# Authenticate to SharePoint
+credentials = ClientCredential(client_id, client_secret)
+ctx = ClientContext(sharepoint_site_url).with_credentials(credentials)
+
+# Function to download CSV file from SharePoint
+def download_csv_from_sharepoint(ctx, csv_file_url):
+    response = ctx.web.get_file_by_server_relative_url(csv_file_url).download().execute_query()
+    file_content = response.content.decode('utf-8')  # Decode to string
+    return file_content
+
+# Function to upload CSV file to SharePoint
+def upload_csv_to_sharepoint(ctx, csv_file_url, csv_content):
+    file_content = csv_content.encode('utf-8')  # Encode back to bytes
+    target_file = ctx.web.get_file_by_server_relative_url(csv_file_url)
+    target_file.upload(file_content).execute_query()
+
+# Download the CSV file from SharePoint
+csv_content = download_csv_from_sharepoint(ctx, csv_file_url)
+
+# Load CSV content into a list of dictionaries
+existing_data = {}
+reader = csv.DictReader(StringIO(csv_content))
+for row in reader:
+    existing_data[row['email']] = row
+
+# Process new data (simulated JSON input)
 pswdata_json = '''
 [
     {"email": "usera@example.com", "comments": "User A comment", "current": "yes", "first": "2023-01-15", "last": "2023-07-01", "datepwchange": "2023-07-01T05:00:00Z"},
@@ -20,22 +53,17 @@ pswdatechange_json = '''
 ]
 '''
 
-# Load JSON data into Python objects (lists of dictionaries)
-pswdata = json.loads(pswdata_json)
-pswdatechange = json.loads(pswdatechange_json)
-
-# Convert string dates in pswdatechange to datetime objects for comparison
+# Convert string dates in pswdatechange to datetime objects
 def convert_dates(data):
     for entry in data:
         entry['start_date'] = datetime.strptime(entry['start_date'], "%Y-%m-%d")
         entry['end_date'] = datetime.strptime(entry['end_date'], "%Y-%m-%d")
     return data
 
-pswdatechange = convert_dates(pswdatechange)
+pswdatechange = convert_dates(json.loads(pswdatechange_json))
 
-# Function to process password data entries
+# Function to process password data
 def process_pswdata_entry(entry, pswdatechange):
-    # Keep only selected columns from the original JSON
     selected_columns = {
         'email': entry['email'],
         'comments': entry['comments'],
@@ -44,11 +72,7 @@ def process_pswdata_entry(entry, pswdatechange):
         'last': entry['last'],
         'datepwchange': entry['datepwchange']
     }
-    
-    # Parse the 'datepwchange' using dateutil to handle ISO 8601 format
     date_pwchange = parser.parse(entry['datepwchange'])
-    
-    # Find the matching quarter based on 'datepwchange'
     assigned_quarter = None
     assigned_quarter_end_date = None
     for quarter in pswdatechange:
@@ -56,17 +80,9 @@ def process_pswdata_entry(entry, pswdatechange):
             assigned_quarter = quarter['quarter']
             assigned_quarter_end_date = quarter['end_date']
             break
-    
-    # Calculate the next reset date (90 days after the quarter end date)
-    if assigned_quarter_end_date:
-        next_reset_date = assigned_quarter_end_date + timedelta(days=90)
-    else:
-        next_reset_date = None
-    
-    # Calculate the risk status and days until next reset
+    next_reset_date = assigned_quarter_end_date + timedelta(days=90) if assigned_quarter_end_date else None
     if next_reset_date:
         days_until_reset = (next_reset_date - datetime.today()).days
-        
         if days_until_reset < 0:
             risk_status = "Overdue"
         elif days_until_reset <= 7:
@@ -76,10 +92,7 @@ def process_pswdata_entry(entry, pswdatechange):
         else:
             risk_status = "On Track"
     else:
-        days_until_reset = None
         risk_status = "No Matching Quarter"
-    
-    # Add the new calculated columns, including days_until_next_reset
     selected_columns.update({
         'assigned_quarter': assigned_quarter,
         'assigned_quarter_end_date': assigned_quarter_end_date.strftime("%Y-%m-%d") if assigned_quarter_end_date else None,
@@ -87,58 +100,29 @@ def process_pswdata_entry(entry, pswdatechange):
         'risk_status': risk_status,
         'days_until_next_reset': days_until_reset
     })
-    
     return selected_columns
 
-# Process each entry in pswdata
-processed_data = [process_pswdata_entry(entry, pswdatechange) for entry in pswdata]
+# Process each new entry and update existing data
+processed_data = [process_pswdata_entry(entry, pswdatechange) for entry in json.loads(pswdata_json)]
 
-# File path for the CSV file
-csv_file = "password_data.csv"
+for item in processed_data:
+    email = item['email']
+    if email in existing_data:
+        existing_data[email]['previous_status'] = existing_data[email]['current_status']
+        existing_data[email]['current_status'] = item['risk_status']
+    else:
+        item['previous_status'] = None
+        item['current_status'] = item['risk_status']
+        existing_data[email] = item
 
-# Function to read CSV into a dictionary (skipped if the file doesn't exist)
-def read_csv_to_dict(csv_file):
-    data = {}
-    if os.path.exists(csv_file):
-        with open(csv_file, mode='r', newline='') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                data[row['email']] = row
-    return data
+# Write updated data back to CSV format
+output = StringIO()
+writer = csv.DictWriter(output, fieldnames=existing_data[next(iter(existing_data))].keys())
+writer.writeheader()
+writer.writerows(existing_data.values())
+csv_updated_content = output.getvalue()
 
-# Function to update or add rows in the CSV file
-def update_or_create_csv(csv_file, processed_data):
-    # Load existing CSV data into a dictionary for fast lookups
-    existing_data = read_csv_to_dict(csv_file) if os.path.exists(csv_file) else {}
-    
-    # List to hold updated or new rows
-    updated_rows = []
+# Upload the updated CSV file back to SharePoint
+upload_csv_to_sharepoint(ctx, csv_file_url, csv_updated_content)
 
-    # Process each item in the processed data
-    for item in processed_data:
-        email = item['email']
-        
-        if email in existing_data:
-            # Email exists, update the previous and current status
-            existing_data[email]['previous_status'] = existing_data[email]['current_status']
-            existing_data[email]['current_status'] = item['risk_status']
-            updated_rows.append(existing_data[email])
-        else:
-            # New entry, add it with previous_status as None
-            item['previous_status'] = None
-            item['current_status'] = item['risk_status']
-            updated_rows.append(item)
-    
-    # Write all rows back to the CSV file
-    with open(csv_file, mode='w', newline='') as file:
-        fieldnames = ['email', 'comments', 'current', 'first', 'last', 'datepwchange', 'assigned_quarter', 
-                      'assigned_quarter_end_date', 'next_reset_date', 'risk_status', 'days_until_next_reset', 
-                      'previous_status', 'current_status']
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(updated_rows)
-
-# Update or create the CSV file
-update_or_create_csv(csv_file, processed_data)
-
-print(f"Data written to {csv_file} successfully.")
+print("CSV file updated on SharePoint successfully.")
