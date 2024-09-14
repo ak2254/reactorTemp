@@ -1,35 +1,41 @@
 """
-    Processes a user's password reset entry and determines their password reset status 
-    based on the last password change date provided in JSON format.
+    Attempts to send a notification asynchronously with a timeout.
 
-    This function calculates the number of days until the next password reset based on 
-    the password change date (`pswdatechange`) and the last password reset date stored 
-    in the user entry. It assigns a status such as "On track", "At risk in 3 weeks", 
-    "At risk in 2 weeks", "At risk today", or "Password overdue" depending on how many 
-    days remain until the next reset is due (90 days from the last reset).
+    This block performs the following steps:
+    - Initiates the notification sending process by calling the `notify` function.
+    - Runs `notify` in an executor to avoid blocking the event loop.
+    - Uses `asyncio.wait_for` to enforce a timeout on the notification operation.
+    - If successful within the timeout, retrieves the status and timestamp.
+    - Handles a timeout or any other exceptions by updating the notification request status and raising appropriate HTTP exceptions.
 
-    Args:
-        entry (Dict[str, Any]): 
-            A dictionary containing user information. Expected keys include:
-                - 'email' (str): The user's email address.
-                - 'last_pw_reset' (str): The date of the user's last password reset in 'YYYY-MM-DD' format.
-        
-        pswdatechange (str): 
-            A JSON-formatted string containing the date the password was last changed.
-            The expected structure is:
-                '{"last_changed_date": "YYYY-MM-DD"}'
-            The 'last_changed_date' is the date the password was last updated.
+    Parameters:
+        timeout (float): The maximum time to wait for the notification to be sent.
+        loop (asyncio.AbstractEventLoop): The event loop to run the executor.
+        notify (function): The function that sends the notification.
+        request (NotificationRequestCreate): The notification request data containing:
+            - client_path (str): Path to the client.
+            - msg (str): The message to be sent.
+            - groups (List[str]): Groups to receive the notification.
+            - destinations (List[str]): Specific destinations for the notification.
+            - subject (str): Subject of the notification.
+        db (AsyncSession): The database session for updating the notification status.
+        new_request (NotificationRequest): The new notification request record in the database.
+
+    Exceptions Handled:
+        asyncio.TimeoutError:
+            - Occurs if the notification sending exceeds the specified timeout.
+            - Logs an error, updates the notification status to "timeout," and raises an HTTP 504 exception.
+        Exception:
+            - Catches all other exceptions.
+            - Logs the error message, updates the notification status to "failed," and raises an HTTP 500 exception.
+
+    Raises:
+        HTTPException:
+            - HTTP 504 Gateway Timeout if a timeout occurs.
+            - HTTP 500 Internal Server Error for any other exceptions.
 
     Returns:
-        tuple: 
-            A tuple consisting of:
-                - email (str): The user's email address.
-                - status (str): The user's password reset status, which can be one of:
-                    - "On track": If the next reset is more than 21 days away.
-                    - "At risk in 3 weeks": If the reset is due in 15-21 days.
-                    - "At risk in 2 weeks": If the reset is due in 8-14 days.
-                    - "At risk today": If the reset is due within the next 7 days.
-                    - "Password overdue": If the password reset is overdue.
-                    - "Invalid date format": If there is an error parsing date strings.
-                    - "Invalid JSON format": If there is an error parsing the JSON string.
+        tuple:
+            - status (str): The status returned by the `notify` function upon successful execution.
+            - timestamp (str): The timestamp returned by the `notify` function.
     """
