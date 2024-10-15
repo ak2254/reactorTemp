@@ -1,11 +1,9 @@
-TotalTargetObservations = 
-VAR MinObservationDate = CALCULATE(MIN('Observation'[Date]), ALL('Personnel'))
-VAR MaxObservationDate = CALCULATE(MAX('Observation'[Date]), ALL('Personnel'))
+Attainment % = 
+VAR CompletedObs = [TotalObservations]  -- Assuming you already have a measure to count completed observations
+VAR TargetObs = [TotalTargetObservations]  -- Assuming you have a measure for total target observations
 RETURN
-SUMX(
-    'Personnel',
-    VAR StartDate = 'Personnel'[Start]
-    VAR EndDate = IF(ISBLANK('Personnel'[End]), MaxObservationDate, 'Personnel'[End])
-    VAR ActiveMonths = DATEDIFF(MAX(StartDate, MinObservationDate), MIN(EndDate, MaxObservationDate), MONTH)
-    RETURN IF(ActiveMonths > 0, 'Personnel'[Target #] * ActiveMonths, 0)
+IF(
+    TargetObs > 0,  -- To avoid division by zero errors
+    DIVIDE(CompletedObs, TargetObs, 0),  -- Calculate attainment percentage
+    BLANK()  -- If no target, return blank
 )
