@@ -1,10 +1,9 @@
-Not Completed Audits = 
-COUNTROWS(AreaTable) - 
+Completed Audits = 
 CALCULATE(
-    COUNT(AuditTable[AuditID]), 
+    DISTINCTCOUNT(AuditTable[Area]),
     FILTER(
-        AuditTable, 
-        YEAR(AuditTable[AuditDate]) = YEAR(SELECTEDVALUE(DateTable[Date])) && 
-        MONTH(AuditTable[AuditDate]) = MONTH(SELECTEDVALUE(DateTable[Date]))
+        AuditTable,
+        AuditTable[AuditDate] >= DATE(YEAR(SELECTEDVALUE(DateTable[MonthYear])), MONTH(SELECTEDVALUE(DateTable[MonthYear])), 1) &&
+        AuditTable[AuditDate] < EDATE(DATE(YEAR(SELECTEDVALUE(DateTable[MonthYear])), MONTH(SELECTEDVALUE(DateTable[MonthYear])), 1), 1)
     )
 )
