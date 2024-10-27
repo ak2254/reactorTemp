@@ -3,12 +3,12 @@ CALCULATE(
     DISTINCTCOUNT(AreaTable[Area]),
     FILTER(
         AreaTable,
-        NOT(
-            AreaTable[Area] IN 
-            CALCULATETABLE(
-                VALUES(AuditTable[Area]),
+        ISBLANK(
+            CALCULATE(
+                MAX(AuditTable[AuditDate]),
                 FILTER(
-                    ALL(AuditTable),
+                    AuditTable,
+                    AuditTable[Area] = AreaTable[Area] &&
                     YEAR(AuditTable[AuditDate]) = YEAR(MAX(AuditTable[AuditDate])) &&
                     MONTH(AuditTable[AuditDate]) = MONTH(MAX(AuditTable[AuditDate]))
                 )
@@ -16,4 +16,3 @@ CALCULATE(
         )
     )
 )
-
