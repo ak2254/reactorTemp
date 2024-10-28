@@ -91,4 +91,35 @@ CALCULATE(
         ) = 'personnel'[Role]
     )
 )
+TotalObservationsWithRole = 
+CALCULATE(
+    COUNTROWS('audits'),
+    FILTER(
+        'audits',
+        'audits'[Completed] = "Yes" &&
+        'audits'[Full Name] IN VALUES('personnel'[Full Name]) &&
+        'audits'[Observation Date] >= LOOKUPVALUE('personnel'[Start Date], 'personnel'[Full Name], 'audits'[Full Name], 'personnel'[Start Date], 'audits'[Observation Date]) &&
+        'audits'[Observation Date] <= COALESCE(
+            LOOKUPVALUE('personnel'[End Date], 'personnel'[Full Name], 'audits'[Full Name], 'personnel'[Start Date], 'audits'[Observation Date]), 
+            TODAY()
+        ) &&
+        MAXX(
+            FILTER(
+                'personnel',
+                'personnel'[Full Name] = 'audits'[Full Name] &&
+                'audits'[Observation Date] >= 'personnel'[Start Date] &&
+                'audits'[Observation Date] <= COALESCE('personnel'[End Date], TODAY())
+            ),
+            'personnel'[Role]
+        ) = MAXX(
+            FILTER(
+                'personnel',
+                'personnel'[Full Name] = 'audits'[Full Name] &&
+                'audits'[Observation Date] >= 'personnel'[Start Date] &&
+                'audits'[Observation Date] <= COALESCE('personnel'[End Date], TODAY())
+            ),
+            'personnel'[Role]
+        )
+    )
+)
 
