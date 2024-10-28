@@ -138,3 +138,18 @@ CALCULATE(
     )
 )
 
+TotalObservationsByDate = 
+CALCULATE(
+    COUNTROWS('audits'),
+    'audits'[Completed] = "Yes",
+    TREATAS(
+        VALUES('audits'[Full Name]),
+        'personnel'[Full Name]
+    ),
+    FILTER(
+        'personnel',
+        'audits'[Observation Date] >= 'personnel'[Start Date] &&
+        ('audits'[Observation Date] <= 'personnel'[End Date] || ISBLANK('personnel'[End Date]))
+    )
+)
+
