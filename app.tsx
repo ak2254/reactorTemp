@@ -152,4 +152,18 @@ CALCULATE(
         ('audits'[Observation Date] <= 'personnel'[End Date] || ISBLANK('personnel'[End Date]))
     )
 )
+TotalObservationsByDate = 
+VAR ObservationDate = MAX('audits'[Observation Date])
+RETURN
+CALCULATE(
+    COUNTROWS('audits'),
+    'audits'[Completed] = "Yes",
+    FILTER(
+        'personnel',
+        'personnel'[Full Name] = MAX('audits'[Full Name]) &&
+        ObservationDate >= 'personnel'[Start Date] &&
+        (ISBLANK('personnel'[End Date]) || ObservationDate <= 'personnel'[End Date])
+    )
+)
+
 
