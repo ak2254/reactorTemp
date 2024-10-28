@@ -20,3 +20,22 @@ CALCULATE(
             )
     )
 )
+
+
+TotalObservationsWithRole = 
+CALCULATE(
+    COUNTROWS('audits'),
+    FILTER(
+        'audits',
+        'audits'[Completed] = "Yes" &&
+        'audits'[Full Name] IN VALUES('personnel'[Full Name])
+    ),
+    FILTER(
+        'personnel',
+        'personnel'[Full Name] = 'audits'[Full Name] &&
+        'audits'[Observation Date] >= 'personnel'[Start Date] &&
+        'audits'[Observation Date] <= COALESCE('personnel'[End Date], TODAY()) &&
+        'personnel'[Role] = 'personnel'[Role]    -- Ensure the role matches
+    )
+)
+
