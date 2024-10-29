@@ -166,4 +166,25 @@ CALCULATE(
     )
 )
 
+AssignedRole = 
+VAR Person = 'audits'[Full Name]
+VAR AuditDate = 'audits'[Observation Date]
+
+RETURN 
+    CALCULATE(
+        MAX('personnel'[Role]),
+        FILTER(
+            'personnel',
+            'personnel'[Full Name] = Person &&
+            AuditDate >= 'personnel'[Start Date] &&
+            (ISBLANK('personnel'[End Date]) || AuditDate <= 'personnel'[End Date])
+        )
+    )
+
+TotalObservationsByRole = 
+CALCULATE(
+    COUNTROWS('audits'),
+    'audits'[Completed] = "Yes"
+)
+
 
