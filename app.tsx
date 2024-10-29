@@ -187,4 +187,12 @@ CALCULATE(
     'audits'[Completed] = "Yes"
 )
 
+PersonnelAuditMatching = 
+FILTER(
+    CROSSJOIN(personnel, audits),
+    personnel[Full Name] = audits[Full Name] &&
+    audits[Observation Date] >= personnel[Start Date] &&
+    (ISBLANK(personnel[End Date]) || audits[Observation Date] <= personnel[End Date])
+)
+
 
