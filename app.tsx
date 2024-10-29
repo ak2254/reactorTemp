@@ -195,4 +195,9 @@ FILTER(
     (ISBLANK(personnel[End Date]) || audits[Observation Date] <= personnel[End Date])
 )
 
+TotalObservationsByRoleAndIndividual = 
+CALCULATE(
+    COUNTROWS(PersonnelAuditMatching),
+    PersonnelAuditMatching[Completed] = "Yes"
+)
 
