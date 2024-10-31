@@ -1,5 +1,3 @@
-I have developed and completed several applications to support this goal.
+o achieve this, I created and launched the One Demand Application, where users can submit requests for new project support or additional assistance on existing projects. This application will also link to a Power BI dashboard showcasing all active projects across our site.
 
-Key projects include the DNCM PowerApp, developed in collaboration with Martin Qui, which tracks damaged and non-conforming material processes. This application is equipped with automated workflows that guide users through the next steps based on their selections. Currently, it manages 632 records, streamlining what was previously a manual, paper-based process.
-
-Additionally, I created SAP Requests and POMS Requests trackers for the Digital Systems team. Both applications feature user-based views: a submission form accessible to all users and an admin view that provides insights into all submitted requests. These PowerApps enhance efficiency by simplifying request tracking and providing real-time visibility for administrators
+Progress has required significant coordination, as gathering responses from different teams has taken longer than anticipated. Despite this, I have compiled nearly 60 applications in an Excel sheet, including those implemented by our team. All dashboards created this year have associated documentation, while PowerApps documentation is underway, with approximately 60% completed.
