@@ -9,8 +9,12 @@ personnel = [
     {"name": "Dana", "role": "Supervisor", "date_qualified_start": "2022-12-01"},
 ]
 
-# Example list of (Year, Month) tuples
-year_month_list = [(2023, 1), (2023, 2), (2023, 3)]  # January, February, March 2023
+# Example list of (Month, Year) tuples
+year_month_list = [("Jan", 2023), ("Feb", 2023), ("Mar", 2023)]  # January, February, March 2023
+
+# Month abbreviation to number mapping
+month_to_number = {month: index for index, month in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                                                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], start=1)}
 
 # Helper function to check qualification
 def is_qualified(person, year, month):
@@ -26,15 +30,16 @@ def calculate_role_percentages(personnel, year_month_list):
     # Count totals and qualifications
     for person in personnel:
         role_totals[person["role"]] += 1
-        for year, month in year_month_list:
+        for month_abbr, year in year_month_list:
+            month = month_to_number[month_abbr]
             if is_qualified(person, year, month):
-                role_qualified[(year, month)][person["role"]] += 1
+                role_qualified[(year, month_abbr)][person["role"]] += 1
 
     # Generate result list
-    for year, month in year_month_list:
+    for month_abbr, year in year_month_list:
         row = {
             "year": year,
-            "month": month,
+            "month": month_abbr,
             "manager": 0,
             "supervisor": 0,
             "total": 0,
@@ -42,10 +47,10 @@ def calculate_role_percentages(personnel, year_month_list):
         total_people = sum(role_totals.values())
         for role in ["Manager", "Supervisor"]:
             total_count = role_totals.get(role, 0)
-            qualified_count = role_qualified[(year, month)].get(role, 0)
+            qualified_count = role_qualified[(year, month_abbr)].get(role, 0)
             row[role.lower()] = (qualified_count / total_count) * 100 if total_count > 0 else 0
         row["total"] = (
-            sum(role_qualified[(year, month)].values()) / total_people * 100 if total_people > 0 else 0
+            sum(role_qualified[(year, month_abbr)].values()) / total_people * 100 if total_people > 0 else 0
         )
         result.append(row)
 
