@@ -1,31 +1,43 @@
 from datetime import datetime
 from collections import defaultdict
 
-# Example personnel dataset with some None values for date_qualified_start
+# Example personnel dataset with some None values for date_qualified_start and end_date
 personnel = [
-    {"name": "Alice", "role": "Manager", "date_qualified_start": "2022-01-15"},
-    {"name": "Bob", "role": "Supervisor", "date_qualified_start": "2023-01-20"},
-    {"name": "Charlie", "role": "Manager", "date_qualified_start": "2023-03-01"},
-    {"name": "Dana", "role": "Supervisor", "date_qualified_start": "2022-12-01"},
-    {"name": "Eve", "role": "Technician", "date_qualified_start": None},  # No qualification date
+    {"name": "Alice", "role": "Manager", "date_qualified_start": "2022-01-15", "end_date": None},
+    {"name": "Bob", "role": "Supervisor", "date_qualified_start": "2023-01-20", "end_date": "2023-03-15"},
+    {"name": "Charlie", "role": "Manager", "date_qualified_start": "2023-03-01", "end_date": None},
+    {"name": "Dana", "role": "Supervisor", "date_qualified_start": "2022-12-01", "end_date": None},
+    {"name": "Eve", "role": "Technician", "date_qualified_start": None, "end_date": None},  # No qualification date
 ]
 
 # Example list of (Month, Year) tuples
 year_month_list = [("Jan", 2023), ("Feb", 2023), ("Mar", 2023)]  # January, February, March 2023
 
-# Helper function to check qualification, including None handling
-def is_qualified(person, year, month_str):
-    # If the date_qualified_start is None, return False
-    if person["date_qualified_start"] is None:
-        return False
+# Helper function to check if a person should be included in totals and qualified counts
+def is_included(person, year, month_str):
+    # Convert the month string and year to a datetime object
+    cutoff_date = datetime.strptime(f"{month_str} {year}", "%b %Y")
     
-    # Convert the month string to a datetime object to extract month number
+    # If end_date exists and is in or after the cutoff month, exclude the person
+    if person.get("end_date"):
+        end_date = datetime.strptime(person["end_date"], "%Y-%m-%d")
+        if end_date >= cutoff_date:
+            return False
+    return True
+
+# Helper function to check qualification
+def is_qualified(person, year, month_str):
+    # If the date_qualified_start is None or the person is excluded, return False
+    if person["date_qualified_start"] is None or not is_included(person, year, month_str):
+        return False
+
+    # Convert the month string and year to a datetime object
     qualified_date = datetime.strptime(f"{month_str} {year}", "%b %Y")
     qualified_date_start = datetime.strptime(person["date_qualified_start"], "%Y-%m-%d")
     
     return qualified_date_start <= qualified_date
 
-# Calculate role-specific percentages and counts and return separate columns for each
+# Calculate role-specific percentages and counts, excluding based on end_date
 def calculate_role_percentages(personnel, year_month_list):
     # Initialize dictionaries to hold the results
     result = []
@@ -40,10 +52,11 @@ def calculate_role_percentages(personnel, year_month_list):
 
     # Count totals and qualifications
     for person in personnel:
-        role_totals[person["role"]] += 1
         for month_str, year in year_month_list:
-            if is_qualified(person, year, month_str):
-                role_qualified[(year, month_str)][person["role"]] += 1
+            if is_included(person, year, month_str):
+                role_totals[person["role"]] += 1
+                if is_qualified(person, year, month_str):
+                    role_qualified[(year, month_str)][person["role"]] += 1
 
     # Generate result lists for each month and role
     for month_str, year in year_month_list:
