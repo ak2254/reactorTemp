@@ -12,14 +12,13 @@ personnel = [
 # Example list of (Month, Year) tuples
 year_month_list = [("Jan", 2023), ("Feb", 2023), ("Mar", 2023)]  # January, February, March 2023
 
-# Month abbreviation to number mapping
-month_to_number = {month: index for index, month in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
-                                                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], start=1)}
-
 # Helper function to check qualification
-def is_qualified(person, year, month):
-    qualified_date = datetime.strptime(person["date_qualified_start"], "%Y-%m-%d")
-    return qualified_date.year < year or (qualified_date.year == year and qualified_date.month <= month)
+def is_qualified(person, year, month_str):
+    # Convert the month string to a datetime object to extract month number
+    qualified_date = datetime.strptime(f"{month_str} {year}", "%b %Y")
+    qualified_date_start = datetime.strptime(person["date_qualified_start"], "%Y-%m-%d")
+    
+    return qualified_date_start <= qualified_date
 
 # Calculate role-specific percentages
 def calculate_role_percentages(personnel, year_month_list):
@@ -27,31 +26,36 @@ def calculate_role_percentages(personnel, year_month_list):
     role_totals = defaultdict(int)  # Track total individuals per role
     role_qualified = defaultdict(lambda: defaultdict(int))  # Track qualified individuals per role and year-month
 
+    # Get unique roles from personnel data
+    unique_roles = set(person["role"] for person in personnel)
+
     # Count totals and qualifications
     for person in personnel:
         role_totals[person["role"]] += 1
-        for month_abbr, year in year_month_list:
-            month = month_to_number[month_abbr]
-            if is_qualified(person, year, month):
-                role_qualified[(year, month_abbr)][person["role"]] += 1
+        for month_str, year in year_month_list:
+            if is_qualified(person, year, month_str):
+                role_qualified[(year, month_str)][person["role"]] += 1
 
     # Generate result list
-    for month_abbr, year in year_month_list:
+    for month_str, year in year_month_list:
         row = {
             "year": year,
-            "month": month_abbr,
-            "manager": 0,
-            "supervisor": 0,
-            "total": 0,
+            "month": month_str,  # Return the original string format for the month
         }
+        
         total_people = sum(role_totals.values())
-        for role in ["Manager", "Supervisor"]:
+        
+        # Calculate percentages for each unique role
+        for role in unique_roles:
             total_count = role_totals.get(role, 0)
-            qualified_count = role_qualified[(year, month_abbr)].get(role, 0)
+            qualified_count = role_qualified[(year, month_str)].get(role, 0)
             row[role.lower()] = (qualified_count / total_count) * 100 if total_count > 0 else 0
+        
+        # Calculate total percentage
         row["total"] = (
-            sum(role_qualified[(year, month_abbr)].values()) / total_people * 100 if total_people > 0 else 0
+            sum(role_qualified[(year, month_str)].values()) / total_people * 100 if total_people > 0 else 0
         )
+        
         result.append(row)
 
     return result
