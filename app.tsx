@@ -1,7 +1,6 @@
 import requests
 import json
 import time
-import random
 
 # Replace with your Monday.com API token and board ID
 API_TOKEN = 'your_monday_com_api_token'
@@ -16,7 +15,7 @@ headers = {
     'Content-Type': 'application/json'
 }
 
-# Example dataset
+# Example dataset (list of dictionaries)
 dataset = [
     {'title': 'Test 1', 'wo': '1234', 'asset': 'Item 1'},
     {'title': 'Test 2', 'wo': '5678', 'asset': 'Item 2'},
@@ -35,12 +34,13 @@ BATCH_SIZE = 100  # Number of items per batch
 REQUESTS_PER_MINUTE = 200  # Monday.com's default rate limit
 DELAY_BETWEEN_BATCHES = 60 / REQUESTS_PER_MINUTE  # Delay in seconds
 
-def create_items_batch(board_id, items):
+def create_items_batch(board_id, items, column_mapping):
     """
     Create multiple items on a Monday.com board in a single batch.
 
     :param board_id: The ID of the board.
     :param items: A list of dictionaries, where each dictionary represents an item.
+    :param column_mapping: A dictionary mapping dataset keys to Monday.com column IDs.
     :return: A list of IDs of the created items.
     """
     # Prepare the items for the mutation
@@ -49,12 +49,19 @@ def create_items_batch(board_id, items):
         column_values = {}
         for key, value in item.items():
             if key in column_mapping:
-                column_id = column_mapping[key]
+                column_id = column_mapping[key]  # Map dataset key to Monday.com column ID
+
+                # Handle lists and dictionaries in the dataset
+                if isinstance(value, list):
+                    value = ', '.join(value)  # Convert list to string
+                elif isinstance(value, dict):
+                    value = json.dumps(value)  # Convert dictionary to JSON string
+
                 column_values[column_id] = value
 
         items_input.append({
-            'item_name': item.get('title', 'New Item'),
-            'column_values': json.dumps(column_values)
+            'item_name': item.get('title', 'New Item'),  # Use 'title' as the item name
+            'column_values': json.dumps(column_values)  # Convert column values to JSON string
         })
 
     # GraphQL mutation to create multiple items
@@ -103,7 +110,7 @@ def bulk_upload_dataset(board_id, dataset, column_mapping, batch_size=BATCH_SIZE
         print(f"Processing batch {start // batch_size + 1}: Items {start + 1} to {end}")
 
         # Create the batch
-        create_items_batch(board_id, batch)
+        create_items_batch(board_id, batch, column_mapping)
 
         # Add a delay to respect rate limits
         if end < total_items:  # No delay after the last batch
