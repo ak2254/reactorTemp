@@ -1,90 +1,89 @@
-from datetime import datetime
-from collections import defaultdict
+from prefect import flow, task
+import os
+import csv
+import openpyxl
+import xlrd
 
-# Example personnel dataset with some None values for date_qualified_start and end_date
-personnel = [
-    {"name": "Alice", "role": "Manager", "date_qualified_start": "2022-01-15", "end_date": None},
-    {"name": "Bob", "role": "Supervisor", "date_qualified_start": "2023-01-20", "end_date": "2023-03-15"},
-    {"name": "Charlie", "role": "Manager", "date_qualified_start": "2023-03-01", "end_date": None},
-    {"name": "Dana", "role": "Supervisor", "date_qualified_start": "2022-12-01", "end_date": None},
-    {"name": "Eve", "role": "Technician", "date_qualified_start": None, "end_date": None},  # No qualification date
-]
-
-# Example list of (Month, Year) tuples
-year_month_list = [("Jan", 2023), ("Feb", 2023), ("Mar", 2023)]  # January, February, March 2023
-
-# Helper function to check if a person should be included in totals and qualified counts
-def is_included(person, year, month_str):
-    # Convert the month string and year to a datetime object
-    cutoff_date = datetime.strptime(f"{month_str} {year}", "%b %Y")
+@task
+def fetch_data_from_file(file_path: str) -> list[dict]:
+    """
+    Task to fetch data from a CSV or Excel file on a network path.
     
-    # If end_date exists and is in or after the cutoff month, exclude the person
-    if person.get("end_date"):
-        end_date = datetime.strptime(person["end_date"], "%Y-%m-%d")
-        if end_date >= cutoff_date:
-            return False
-    return True
-
-# Helper function to check qualification
-def is_qualified(person, year, month_str):
-    # If the date_qualified_start is None or the person is excluded, return False
-    if person["date_qualified_start"] is None or not is_included(person, year, month_str):
-        return False
-
-    # Convert the month string and year to a datetime object
-    qualified_date = datetime.strptime(f"{month_str} {year}", "%b %Y")
-    qualified_date_start = datetime.strptime(person["date_qualified_start"], "%Y-%m-%d")
+    Args:
+        file_path (str): Path to the file (CSV or Excel).
     
-    return qualified_date_start <= qualified_date
+    Returns:
+        list[dict]: List of dictionaries representing rows in the file.
+    """
+    try:
+        # Normalize path to handle spaces and special characters
+        normalized_path = os.path.normpath(file_path)
 
-# Calculate role-specific percentages and counts, excluding based on end_date
-def calculate_role_percentages(personnel, year_month_list):
-    # Initialize dictionaries to hold the results
-    result = []
+        # Check file extension
+        if normalized_path.lower().endswith('.csv'):
+            with open(normalized_path, mode='r', newline='', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                data = [row for row in reader]  # Convert CSV rows to list of dicts
 
-    # Track total individuals per role
-    role_totals = defaultdict(int)
-    # Track qualified individuals per role and year-month
-    role_qualified = defaultdict(lambda: defaultdict(int))
+        elif normalized_path.lower().endswith('.xlsx'):
+            wb = openpyxl.load_workbook(normalized_path, data_only=True)
+            sheet = wb.active  # Get the first sheet
 
-    # Get unique roles from personnel data dynamically
-    unique_roles = set(person["role"] for person in personnel)
-
-    # Count totals and qualifications
-    for person in personnel:
-        for month_str, year in year_month_list:
-            if is_included(person, year, month_str):
-                role_totals[person["role"]] += 1
-                if is_qualified(person, year, month_str):
-                    role_qualified[(year, month_str)][person["role"]] += 1
-
-    # Generate result lists for each month and role
-    for month_str, year in year_month_list:
-        row = {"Month": f"{month_str} {year}"}
-
-        # Calculate total count and percentage (for all roles combined)
-        total_people = sum(role_totals.values())
-        total_qualified = sum(role_qualified[(year, month_str)].values())
-        row["Total"] = total_people
-        row["Total Qual"] = total_qualified
-        row["% Total"] = (total_qualified / total_people * 100) if total_people > 0 else 0
-
-        # Loop through each role dynamically
-        for role in unique_roles:
-            total_count = role_totals.get(role, 0)
-            qualified_count = role_qualified[(year, month_str)].get(role, 0)
+            # Extract header row
+            headers = [cell.value for cell in sheet[1]]
+            data = []
             
-            row[f"Total {role}"] = total_count
-            row[f"Total Qual {role}"] = qualified_count
-            row[f"% Qual {role}"] = (qualified_count / total_count * 100) if total_count > 0 else 0
+            # Extract remaining rows
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                data.append(dict(zip(headers, row)))
 
-        result.append(row)
+        elif normalized_path.lower().endswith('.xls'):
+            wb = xlrd.open_workbook(normalized_path)
+            sheet = wb.sheet_by_index(0)  # Get the first sheet
+            
+            # Extract header row
+            headers = [sheet.cell_value(0, col) for col in range(sheet.ncols)]
+            data = []
 
-    return result
+            # Extract remaining rows
+            for row_idx in range(1, sheet.nrows):
+                row_values = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
+                data.append(dict(zip(headers, row_values)))
 
-# Run the function
-role_stats = calculate_role_percentages(personnel, year_month_list)
+        else:
+            raise ValueError("Unsupported file format. Only CSV and Excel files are supported.")
+        
+        return data
 
-# Print the results
-for row in role_stats:
-    print(row)
+    except FileNotFoundError:
+        raise ValueError(f"File not found at {file_path}")
+    except Exception as e:
+        raise RuntimeError(f"Error reading file: {e}")
+
+@task
+def process_data(data: list[dict]) -> None:
+    """
+    Task to process the data.
+    
+    Args:
+        data (list[dict]): List of dictionaries representing rows in the file.
+    """
+    print(f"Number of rows: {len(data)}")
+    if data:
+        print(f"First row: {data[0]}")  # Print the first row for preview
+
+@flow
+def file_processing_flow(file_path: str):
+    """
+    Prefect flow to fetch and process data from a CSV or Excel file on a network path.
+    
+    Args:
+        file_path (str): Path to the file.
+    """
+    data = fetch_data_from_file(file_path)
+    process_data(data)
+
+if __name__ == "__main__":
+    # Example: File paths for CSV and Excel
+    file_path = r"\\network_drive\shared folder\example file.xlsx"  # Change to .csv or .xls if needed
+    file_processing_flow(file_path)
