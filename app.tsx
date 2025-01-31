@@ -1,3 +1,42 @@
+from datetime import datetime
+import calendar
+
+def get_last_day(year, month):
+    """Returns the last day of a given month."""
+    return calendar.monthrange(year, month)[1]
+
+def calculate_leave_days(leave_start, leave_end, year, month):
+    """Calculates the number of leave days in a given month."""
+    # Convert leave_start and leave_end to datetime objects if they are not already
+    leave_start = datetime.strptime(leave_start, "%Y-%m-%d") if isinstance(leave_start, str) else leave_start
+    leave_end = datetime.strptime(leave_end, "%Y-%m-%d") if isinstance(leave_end, str) else leave_end
+
+    # If leave_end is None, set it to the last day of the month
+    if leave_end is None:
+        last_day = datetime(year, month, get_last_day(year, month))
+    else:
+        last_day = leave_end
+
+    # Ensure leave_start is in the given month
+    first_day = datetime(year, month, 1)
+    
+    if leave_start > last_day or last_day < first_day:
+        return 0  # No leave days in the given month
+
+    # Calculate actual leave days within the month
+    leave_days = (min(last_day, datetime(year, month, get_last_day(year, month))) - max(leave_start, first_day)).days + 1
+
+    return leave_days
+
+# Example usage
+leave_start = "2024-02-20"
+leave_end = None  # Person is still on leave
+year, month = 2024, 2
+
+print(calculate_leave_days(leave_start, leave_end, year, month))  # Output: 9 (Feb 20-29)
+
+
+
 # Get the first day of the next month
 if month == 12:
     next_month = datetime(year + 1, 1, 1)  # Handle December
