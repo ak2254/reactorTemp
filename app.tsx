@@ -18,7 +18,8 @@ headers = {
 # Example dataset (list of dictionaries)
 dataset = [
     {'title': 'Test 1', 'wo': '1234', 'asset': 'Item 1'},
-    {'title': 'Test 2', 'wo': '5678', 'asset': 'Item 2'},
+    {'title': 'Test 2', 'wo': '5678', 'asset': ''},  # Blank asset
+    {'title': 'Test 3', 'wo': '91011'},  # Missing asset
     # Add more items as needed (e.g., 1,000 items)
 ]
 
@@ -29,25 +30,61 @@ column_mapping = {
     'asset': 'asset_column_id',  # Monday.com column ID for 'asset'
 }
 
-# Batch settings
-BATCH_SIZE = 100  # Number of items per batch
+# Rate limit settings
 REQUESTS_PER_MINUTE = 200  # Monday.com's default rate limit
-DELAY_BETWEEN_BATCHES = 60 / REQUESTS_PER_MINUTE  # Delay in seconds
+DELAY_BETWEEN_REQUESTS = 60 / REQUESTS_PER_MINUTE  # Delay in seconds
 
-def create_items_batch(board_id, items, column_mapping):
+def create_item(board_id, item_name, column_values):
     """
-    Create multiple items on a Monday.com board in a single batch.
+    Create a single item on a Monday.com board.
 
     :param board_id: The ID of the board.
-    :param items: A list of dictionaries, where each dictionary represents an item.
-    :param column_mapping: A dictionary mapping dataset keys to Monday.com column IDs.
-    :return: A list of IDs of the created items.
+    :param item_name: The name of the new item.
+    :param column_values: A dictionary of column IDs and their values.
+    :return: The ID of the created item.
     """
-    # Prepare the items for the mutation
-    items_input = []
-    for item in items:
+    # GraphQL mutation to create a single item
+    mutation = '''
+    mutation {
+        create_item (
+            board_id: %s,
+            item_name: "%s",
+            column_values: %s
+        ) {
+            id
+        }
+    }
+    ''' % (board_id, item_name, json.dumps(json.dumps(column_values)))
+
+    try:
+        response = requests.post(API_URL, json={'query': mutation}, headers=headers)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        data = response.json()
+
+        if 'errors' in data:
+            print(f"GraphQL Error: {data['errors']}")
+            return None
+
+        item_id = data['data']['create_item']['id']
+        print(f"Item created successfully! Item ID: {item_id}")
+        return item_id
+
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to create item: {e}")
+        return None
+
+def bulk_upload_dataset(board_id, dataset, column_mapping):
+    """
+    Bulk upload a dataset to a Monday.com board using create_item.
+
+    :param board_id: The ID of the board.
+    :param dataset: A list of dictionaries, where each dictionary represents an item.
+    :param column_mapping: A dictionary mapping dataset keys to Monday.com column IDs.
+    """
+    for index, item_data in enumerate(dataset):
+        # Prepare column_values dictionary
         column_values = {}
-        for key, value in item.items():
+        for key, value in item_data.items():
             if key in column_mapping:
                 column_id = column_mapping[key]  # Map dataset key to Monday.com column ID
 
@@ -60,64 +97,19 @@ def create_items_batch(board_id, items, column_mapping):
                 column_values[column_id] = value
 
         # Special handling for 'asset': Set item name and asset column value
-        if 'asset' in item:
-            item_name = item['asset']  # Use 'asset' value as the item name
-            column_values[column_mapping['asset']] = item['asset']  # Set asset column value
+        if 'asset' in item_data and item_data['asset']:  # Check if 'asset' exists and is not blank
+            item_name = item_data['asset']  # Use 'asset' value as the item name
+            column_values[column_mapping['asset']] = item_data['asset']  # Set asset column value
         else:
-            item_name = item.get('title', 'New Item')  # Fallback to 'title' or 'New Item'
+            item_name = ''  # Leave the item name blank if 'asset' is blank or missing
 
-        items_input.append({
-            'item_name': item_name,  # Use 'asset' value as the item name
-            'column_values': json.dumps(column_values)  # Convert column values to JSON string
-        })
-
-    # GraphQL mutation to create multiple items
-    mutation = '''
-    mutation {
-        create_items (
-            board_id: %s,
-            items: %s
-        ) {
-            id
-        }
-    }
-    ''' % (board_id, json.dumps(items_input))
-
-    try:
-        response = requests.post(API_URL, json={'query': mutation}, headers=headers)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        data = response.json()
-
-        if 'errors' in data:
-            print(f"GraphQL Error: {data['errors']}")
-            return None
-
-        item_ids = [item['id'] for item in data['data']['create_items']]
-        print(f"Batch created successfully! Item IDs: {item_ids}")
-        return item_ids
-
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to create batch: {e}")
-        return None
-
-def bulk_upload_dataset(board_id, dataset, column_mapping, batch_size=BATCH_SIZE):
-    """
-    Bulk upload a dataset to a Monday.com board in batches.
-
-    :param board_id: The ID of the board.
-    :param dataset: A list of dictionaries, where each dictionary represents an item.
-    :param column_mapping: A dictionary mapping dataset keys to Monday.com column IDs.
-    :param batch_size: Number of items per batch.
-    """
-    total_items = len(dataset)
-    for start in range(0, total_items, batch_size):
-        end = start + batch_size
-        batch = dataset[start:end]
-
-        print(f"Processing batch {start // batch_size + 1}: Items {start + 1} to {end}")
-
-        # Create the batch
-        create_items_batch(board_id, batch, column_mapping)
+        # Create the item
+        create_item(board_id, item_name, column_values)
 
         # Add a delay to respect rate limits
-        if end <
+        if index < len(dataset) - 1:  # No delay after the last item
+            time.sleep(DELAY_BETWEEN_REQUESTS)
+
+# Run the bulk upload
+if __name__ == '__main__':
+    bulk_upload_dataset(BOARD_ID, dataset, column_mapping)
