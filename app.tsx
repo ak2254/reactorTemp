@@ -1,89 +1,59 @@
 from prefect import flow, task
-import os
-import csv
-import openpyxl
-import xlrd
 
 @task
-def fetch_data_from_file(file_path: str) -> list[dict]:
+def add_business_unit(work_orders: list[dict], mapping: list[dict]) -> list[dict]:
     """
-    Task to fetch data from a CSV or Excel file on a network path.
+    Adds a 'business_unit' column to the work order dataset by matching 'location' from the mapping dataset.
     
     Args:
-        file_path (str): Path to the file (CSV or Excel).
+        work_orders (list[dict]): List of work order dictionaries.
+        mapping (list[dict]): List of mapping dictionaries with 'location' and 'business_unit'.
     
     Returns:
-        list[dict]: List of dictionaries representing rows in the file.
+        list[dict]: Updated work order dataset with the 'business_unit' column.
     """
-    try:
-        # Normalize path to handle spaces and special characters
-        normalized_path = os.path.normpath(file_path)
+    # Create a dictionary for quick lookup from mapping (location -> business_unit)
+    location_to_bu = {entry["location"]: entry["business_unit"] for entry in mapping}
 
-        # Check file extension
-        if normalized_path.lower().endswith('.csv'):
-            with open(normalized_path, mode='r', newline='', encoding='utf-8') as file:
-                reader = csv.DictReader(file)
-                data = [row for row in reader]  # Convert CSV rows to list of dicts
+    # Add business_unit to each work order based on the location
+    for wo in work_orders:
+        wo["business_unit"] = location_to_bu.get(wo["location"], "Unknown")  # Default to 'Unknown' if no match
 
-        elif normalized_path.lower().endswith('.xlsx'):
-            wb = openpyxl.load_workbook(normalized_path, data_only=True)
-            sheet = wb.active  # Get the first sheet
-
-            # Extract header row
-            headers = [cell.value for cell in sheet[1]]
-            data = []
-            
-            # Extract remaining rows
-            for row in sheet.iter_rows(min_row=2, values_only=True):
-                data.append(dict(zip(headers, row)))
-
-        elif normalized_path.lower().endswith('.xls'):
-            wb = xlrd.open_workbook(normalized_path)
-            sheet = wb.sheet_by_index(0)  # Get the first sheet
-            
-            # Extract header row
-            headers = [sheet.cell_value(0, col) for col in range(sheet.ncols)]
-            data = []
-
-            # Extract remaining rows
-            for row_idx in range(1, sheet.nrows):
-                row_values = [sheet.cell_value(row_idx, col) for col in range(sheet.ncols)]
-                data.append(dict(zip(headers, row_values)))
-
-        else:
-            raise ValueError("Unsupported file format. Only CSV and Excel files are supported.")
-        
-        return data
-
-    except FileNotFoundError:
-        raise ValueError(f"File not found at {file_path}")
-    except Exception as e:
-        raise RuntimeError(f"Error reading file: {e}")
+    return work_orders
 
 @task
 def process_data(data: list[dict]) -> None:
-    """
-    Task to process the data.
-    
-    Args:
-        data (list[dict]): List of dictionaries representing rows in the file.
-    """
-    print(f"Number of rows: {len(data)}")
+    """Prints the first few records for verification."""
+    print(f"Processed {len(data)} work orders.")
     if data:
-        print(f"First row: {data[0]}")  # Print the first row for preview
+        print(f"First record: {data[0]}")
 
 @flow
-def file_processing_flow(file_path: str):
+def work_order_processing_flow(work_orders: list[dict], mapping: list[dict]):
     """
-    Prefect flow to fetch and process data from a CSV or Excel file on a network path.
+    Prefect flow to add business unit information to work orders.
     
     Args:
-        file_path (str): Path to the file.
+        work_orders (list[dict]): Work order dataset.
+        mapping (list[dict]): Mapping dataset.
     """
-    data = fetch_data_from_file(file_path)
-    process_data(data)
+    updated_work_orders = add_business_unit(work_orders, mapping)
+    process_data(updated_work_orders)
 
 if __name__ == "__main__":
-    # Example: File paths for CSV and Excel
-    file_path = r"\\network_drive\shared folder\example file.xlsx"  # Change to .csv or .xls if needed
-    file_processing_flow(file_path)
+    # Example Work Order Dataset
+    work_orders = [
+        {"work_order": "WO123", "location": "LocA", "description": "Repair Pump"},
+        {"work_order": "WO124", "location": "LocB", "description": "Replace Valve"},
+        {"work_order": "WO125", "location": "LocC", "description": "Inspect Motor"}
+    ]
+
+    # Example Mapping Dataset
+    mapping = [
+        {"location": "LocA", "business_unit": "BU1"},
+        {"location": "LocB", "business_unit": "BU2"}
+        # Note: LocC is missing, so it should default to "Unknown"
+    ]
+
+    # Run the flow
+    work_order_processing_flow(work_orders, ma
