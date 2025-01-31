@@ -24,9 +24,9 @@ dataset = [
 
 # Column mapping: Map dataset keys to Monday.com column IDs
 column_mapping = {
-    'title': 'text_column_id',  # Replace with your Monday.com column ID
-    'wo': 'numbers_column_id',  # Replace with your Monday.com column ID
-    'asset': 'status_column_id',  # Replace with your Monday.com column ID
+    'title': 'text_column_id',  # Monday.com column ID for 'title'
+    'wo': 'numbers_column_id',  # Monday.com column ID for 'wo'
+    'asset': 'asset_column_id',  # Monday.com column ID for 'asset'
 }
 
 # Batch settings
@@ -59,8 +59,15 @@ def create_items_batch(board_id, items, column_mapping):
 
                 column_values[column_id] = value
 
+        # Special handling for 'asset': Set item name and asset column value
+        if 'asset' in item:
+            item_name = item['asset']  # Use 'asset' value as the item name
+            column_values[column_mapping['asset']] = item['asset']  # Set asset column value
+        else:
+            item_name = item.get('title', 'New Item')  # Fallback to 'title' or 'New Item'
+
         items_input.append({
-            'item_name': item.get('title', 'New Item'),  # Use 'title' as the item name
+            'item_name': item_name,  # Use 'asset' value as the item name
             'column_values': json.dumps(column_values)  # Convert column values to JSON string
         })
 
@@ -113,9 +120,4 @@ def bulk_upload_dataset(board_id, dataset, column_mapping, batch_size=BATCH_SIZE
         create_items_batch(board_id, batch, column_mapping)
 
         # Add a delay to respect rate limits
-        if end < total_items:  # No delay after the last batch
-            time.sleep(DELAY_BETWEEN_BATCHES)
-
-# Run the bulk upload
-if __name__ == '__main__':
-    bulk_upload_dataset(BOARD_ID, dataset, column_mapping)
+        if end <
