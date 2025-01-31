@@ -1,59 +1,57 @@
-from prefect import flow, task
+import requests
 
-@task
-def add_business_unit(work_orders: list[dict], mapping: list[dict]) -> list[dict]:
-    """
-    Adds a 'business_unit' column to the work order dataset by matching 'location' from the mapping dataset.
-    
-    Args:
-        work_orders (list[dict]): List of work order dictionaries.
-        mapping (list[dict]): List of mapping dictionaries with 'location' and 'business_unit'.
-    
-    Returns:
-        list[dict]: Updated work order dataset with the 'business_unit' column.
-    """
-    # Create a dictionary for quick lookup from mapping (location -> business_unit)
-    location_to_bu = {entry["location"]: entry["business_unit"] for entry in mapping}
+API_KEY = "your_api_key"
+BOARD_ID = 123456789
+URL = "https://api.monday.com/v2"
 
-    # Add business_unit to each work order based on the location
-    for wo in work_orders:
-        wo["business_unit"] = location_to_bu.get(wo["location"], "Unknown")  # Default to 'Unknown' if no match
+HEADERS = {
+    "Authorization": API_KEY,
+    "Content-Type": "application/json"
+}
 
-    return work_orders
+# GraphQL query to get all item IDs
+GET_ITEMS_QUERY = """
+query ($board_id: [Int!]) {
+  boards (ids: $board_id) {
+    items {
+      id
+    }
+  }
+}
+"""
 
-@task
-def process_data(data: list[dict]) -> None:
-    """Prints the first few records for verification."""
-    print(f"Processed {len(data)} work orders.")
-    if data:
-        print(f"First record: {data[0]}")
+# GraphQL mutation to archive an item
+ARCHIVE_ITEM_QUERY = """
+mutation ($item_id: Int!) {
+  archive_item (item_id: $item_id) {
+    id
+  }
+}
+"""
 
-@flow
-def work_order_processing_flow(work_orders: list[dict], mapping: list[dict]):
-    """
-    Prefect flow to add business unit information to work orders.
-    
-    Args:
-        work_orders (list[dict]): Work order dataset.
-        mapping (list[dict]): Mapping dataset.
-    """
-    updated_work_orders = add_business_unit(work_orders, mapping)
-    process_data(updated_work_orders)
+def get_all_item_ids():
+    """Fetch all item IDs from the board."""
+    payload = {
+        "query": GET_ITEMS_QUERY,
+        "variables": {"board_id": BOARD_ID}
+    }
+    response = requests.post(URL, headers=HEADERS, json=payload)
+    data = response.json()
+    return [item["id"] for item in data["data"]["boards"][0]["items"]]
 
-if __name__ == "__main__":
-    # Example Work Order Dataset
-    work_orders = [
-        {"work_order": "WO123", "location": "LocA", "description": "Repair Pump"},
-        {"work_order": "WO124", "location": "LocB", "description": "Replace Valve"},
-        {"work_order": "WO125", "location": "LocC", "description": "Inspect Motor"}
-    ]
+def archive_all_items():
+    """Archive all items from the board."""
+    item_ids = get_all_item_ids()
+    for item_id in item_ids:
+        payload = {
+            "query": ARCHIVE_ITEM_QUERY,
+            "variables": {"item_id": item_id}
+        }
+        response = requests.post(URL, headers=HEADERS, json=payload)
+        if response.status_code == 200:
+            print(f"Archived item ID {item_id}")
+        else:
+            print(f"Error archiving item {item_id}: {response.text}")
 
-    # Example Mapping Dataset
-    mapping = [
-        {"location": "LocA", "business_unit": "BU1"},
-        {"location": "LocB", "business_unit": "BU2"}
-        # Note: LocC is missing, so it should default to "Unknown"
-    ]
-
-    # Run the flow
-    work_order_processing_flow(work_orders, ma
+# Run the script
+archive_all_items()
