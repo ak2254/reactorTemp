@@ -1,3 +1,14 @@
+# Get the first day of the next month
+if month == 12:
+    next_month = datetime(year + 1, 1, 1)  # Handle December
+else:
+    next_month = datetime(year, month + 1, 1)
+
+# Subtract one day to get the last day of the current month
+last_date = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+
 from datetime import datetime, timedelta
 
 def is_audit_required(person_name, current_year, current_month, leave_data):
