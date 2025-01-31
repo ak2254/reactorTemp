@@ -32,4 +32,31 @@ def is_audit_required(person_name, current_year, current_month, leave_data):
         leave_end = datetime.strptime(leave['End Date'], "%Y-%m-%d")
 
         # Ensure leave overlaps with this month
-        if leave_end < first_day or leave_start > las
+        if leave_end < first_day or leave_start > last_day:
+            continue  
+
+        # Get actual leave days within the month
+        actual_start = max(leave_start, first_day)
+        actual_end = min(leave_end, last_day)
+        leave_days += (actual_end - actual_start).days + 1  # +1 to include both days
+
+    # If leave exceeds 15 days, audits are not required
+    return leave_days <= 15
+
+# Example Leave Data
+leave_records = [
+    {"Person": "John Doe", "Start Date": "2024-05-01", "End Date": "2024-05-20"},  # 20 days leave
+    {"Person": "John Doe", "Start Date": "2024-06-10", "End Date": "2024-06-14"},  # 5 days leave
+    {"Person": "Jane Smith", "Start Date": "2024-06-05", "End Date": "2024-06-25"},  # 21 days leave
+]
+
+# Check for John Doe in May and June
+for month in [5, 6]:
+    required = is_audit_required("John Doe", 2024, month, leave_records)
+    status = "Required" if required else "Not Required"
+    print(f"Audits for John Doe in {month}/2024: {status}")
+
+# Check for Jane Smith in June
+required = is_audit_required("Jane Smith", 2024, 6, leave_records)
+status = "Required" if required else "Not Required"
+print(f"Audits for Jane Smith in 6/2024: {status}")
