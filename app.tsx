@@ -1,3 +1,23 @@
+def get_all_item_ids():
+    """Fetch all item IDs from the board."""
+    payload = {
+        "query": GET_ITEMS_QUERY,
+        "variables": {"board_id": BOARD_ID}
+    }
+    response = requests.post(URL, headers=HEADERS, json=payload)
+    data = response.json()
+    
+    print(data)  # Debugging: Print response to check structure
+
+    if "data" in data and "boards" in data["data"] and data["data"]["boards"]:
+        return [item["id"] for item in data["data"]["boards"][0]["items"]]
+    else:
+        print("Error: Unexpected response format", data)
+        return []
+
+
+
+
 import requests
 
 API_KEY = "your_api_key"
