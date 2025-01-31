@@ -1,77 +1,58 @@
-def get_all_item_ids():
-    """Fetch all item IDs from the board."""
-    payload = {
-        "query": GET_ITEMS_QUERY,
-        "variables": {"board_id": BOARD_ID}
-    }
-    response = requests.post(URL, headers=HEADERS, json=payload)
-    data = response.json()
-    
-    print(data)  # Debugging: Print response to check structure
-
-    if "data" in data and "boards" in data["data"] and data["data"]["boards"]:
-        return [item["id"] for item in data["data"]["boards"][0]["items"]]
-    else:
-        print("Error: Unexpected response format", data)
-        return []
-
-
-
-
 import requests
 
-API_KEY = "your_api_key"
-BOARD_ID = 123456789
-URL = "https://api.monday.com/v2"
+# Replace with your Monday.com API token and board ID
+API_TOKEN = 'your_monday_com_api_token'
+BOARD_ID = 'your_board_id'
 
-HEADERS = {
-    "Authorization": API_KEY,
-    "Content-Type": "application/json"
+# Monday.com API endpoint
+API_URL = 'https://api.monday.com/v2'
+
+# Headers for the API request
+headers = {
+    'Authorization': API_TOKEN,
+    'Content-Type': 'application/json'
 }
 
-# GraphQL query to get all item IDs
-GET_ITEMS_QUERY = """
-query ($board_id: [Int!]) {
-  boards (ids: $board_id) {
-    items {
-      id
-    }
-  }
-}
-"""
-
-# GraphQL mutation to archive an item
-ARCHIVE_ITEM_QUERY = """
-mutation ($item_id: Int!) {
-  archive_item (item_id: $item_id) {
-    id
-  }
-}
-"""
-
-def get_all_item_ids():
-    """Fetch all item IDs from the board."""
-    payload = {
-        "query": GET_ITEMS_QUERY,
-        "variables": {"board_id": BOARD_ID}
-    }
-    response = requests.post(URL, headers=HEADERS, json=payload)
-    data = response.json()
-    return [item["id"] for item in data["data"]["boards"][0]["items"]]
-
-def archive_all_items():
-    """Archive all items from the board."""
-    item_ids = get_all_item_ids()
-    for item_id in item_ids:
-        payload = {
-            "query": ARCHIVE_ITEM_QUERY,
-            "variables": {"item_id": item_id}
+def get_all_items(board_id):
+    """Fetch all items (rows) from the board."""
+    query = '''
+    query {
+        boards(ids: %s) {
+            items {
+                id
+            }
         }
-        response = requests.post(URL, headers=HEADERS, json=payload)
-        if response.status_code == 200:
-            print(f"Archived item ID {item_id}")
-        else:
-            print(f"Error archiving item {item_id}: {response.text}")
+    }
+    ''' % board_id
 
-# Run the script
-archive_all_items()
+    response = requests.post(API_URL, json={'query': query}, headers=headers)
+    if response.status_code == 200:
+        return response.json()['data']['boards'][0]['items']
+    else:
+        print(f"Failed to fetch items: {response.status_code}")
+        return []
+
+def delete_item(item_id):
+    """Delete an item (row) by its ID."""
+    mutation = '''
+    mutation {
+        delete_item (item_id: %s) {
+            id
+        }
+    }
+    ''' % item_id
+
+    response = requests.post(API_URL, json={'query': mutation}, headers=headers)
+    if response.status_code == 200:
+        print(f"Deleted item {item_id}")
+    else:
+        print(f"Failed to delete item {item_id}: {response.status_code}")
+
+def delete_all_items(board_id):
+    """Delete all items (rows) from the board."""
+    items = get_all_items(board_id)
+    for item in items:
+        delete_item(item['id'])
+
+if __name__ == '__main__':
+    delete_all_items(BOARD_ID)
