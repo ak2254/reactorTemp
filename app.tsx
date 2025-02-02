@@ -1,104 +1,117 @@
-from datetime import datetime
-import calendar
+import asyncio
+import aiohttp
+from prefect import task, flow, get_run_logger
 
-def get_last_day(year, month):
-    """Returns the last day of a given month."""
-    return calendar.monthrange(year, month)[1]
+class MondayAPIError(Exception):
+    """Custom exception for monday.com API errors."""
+    pass
 
-def calculate_leave_days(leave_start, leave_end, year, month):
-    """Calculates the number of leave days in a given month."""
-    # Convert leave_start and leave_end to datetime objects if they are not already
-    leave_start = datetime.strptime(leave_start, "%Y-%m-%d") if isinstance(leave_start, str) else leave_start
-    leave_end = datetime.strptime(leave_end, "%Y-%m-%d") if isinstance(leave_end, str) else leave_end
-
-    # If leave_end is None, set it to the last day of the month
-    if leave_end is None:
-        last_day = datetime(year, month, get_last_day(year, month))
-    else:
-        last_day = leave_end
-
-    # Ensure leave_start is in the given month
-    first_day = datetime(year, month, 1)
-    
-    if leave_start > last_day or last_day < first_day:
-        return 0  # No leave days in the given month
-
-    # Calculate actual leave days within the month
-    leave_days = (min(last_day, datetime(year, month, get_last_day(year, month))) - max(leave_start, first_day)).days + 1
-
-    return leave_days
-
-# Example usage
-leave_start = "2024-02-20"
-leave_end = None  # Person is still on leave
-year, month = 2024, 2
-
-print(calculate_leave_days(leave_start, leave_end, year, month))  # Output: 9 (Feb 20-29)
-
-
-
-# Get the first day of the next month
-if month == 12:
-    next_month = datetime(year + 1, 1, 1)  # Handle December
-else:
-    next_month = datetime(year, month + 1, 1)
-
-# Subtract one day to get the last day of the current month
-last_date = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
-
-
-
-from datetime import datetime, timedelta
-
-def is_audit_required(person_name, current_year, current_month, leave_data):
+async def delete_item(session, api_key, item_id):
     """
-    Checks if a person is required to perform audits in the given month and year.
-
-    - If the person was on leave for more than 15 days in that month, audits are not required.
-    - Otherwise, audits are required.
+    Delete a single item from monday.com using its ID.
 
     Parameters:
-        person_name (str): The full name of the person (e.g., "John Doe").
-        current_year (int): The year to check.
-        current_month (int): The month to check.
-        leave_data (list): List of leave records [{'Person': 'John Doe', 'Start Date': 'YYYY-MM-DD', 'End Date': 'YYYY-MM-DD'}].
+        session (aiohttp.ClientSession): The aiohttp session for making HTTP requests.
+        api_key (str): The API key for authenticating with the monday.com API.
+        item_id (int): The ID of the item to delete.
+
+    Raises:
+        MondayAPIError: If the delete request fails.
+    """
+    url = "https://api.monday.com/v2"
+    headers = {
+        "Authorization": api_key,
+        "Content-Type": "application/json"
+    }
+    
+    query = """
+    mutation {
+        delete_item (item_id: %s) {
+            id
+        }
+    }
+    """ % item_id
+    
+    try:
+        async with session.post(url, headers=headers, json={'query': query}) as response:
+            response.raise_for_status()  # Raises an HTTPError for bad responses (4xx, 5xx)
+            data = await response.json()
+            if "errors" in data:
+                raise MondayAPIError(f"Failed to delete item {item_id}: {data['errors']}")
+    except aiohttp.ClientError as e:
+        raise MondayAPIError(f"Request failed for item {item_id}: {e}")
+
+async def delete_items_concurrently(api_key, item_ids, max_concurrent_requests=50, requests_per_minute=100):
+    """
+    Delete multiple items from monday.com concurrently using asyncio, while respecting rate limits.
+
+    Parameters:
+        api_key (str): The API key for authenticating with the monday.com API.
+        item_ids (list): A list of item IDs to delete.
+        max_concurrent_requests (int): Maximum number of concurrent requests to send at once.
+        requests_per_minute (int): Maximum number of requests allowed per minute (monday.com's rate limit).
 
     Returns:
-        bool: True if audits are required, False otherwise.
+        list: A list of item IDs that were successfully deleted.
     """
-    
-    # First day of the current month
-    first_day = datetime(current_year, current_month, 1)
-    
-    # Last day of the current month
-    last_day = (first_day + timedelta(days=32)).replace(day=1) - timedelta(days=1)  
+    successful_deletions = []
+    semaphore = asyncio.Semaphore(max_concurrent_requests)  # Limit concurrent requests
+    delay_between_requests = 60 / requests_per_minute  # Delay between requests to respect rate limits
 
-    # Track leave days in this month
-    leave_days = 0
+    async def delete_with_rate_limit(session, item_id):
+        async with semaphore:
+            try:
+                await delete_item(session, api_key, item_id)
+                successful_deletions.append(item_id)
+            except MondayAPIError as e:
+                logger = get_run_logger()
+                logger.error(f"Error deleting item {item_id}: {e}")
+            finally:
+                await asyncio.sleep(delay_between_requests)  # Add delay between requests
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [delete_with_rate_limit(session, item_id) for item_id in item_ids]
+        await asyncio.gather(*tasks)
     
-    for leave in leave_data:
-        if leave['Person'] != person_name:
-            continue  # Skip if name doesn't match
+    return successful_deletions
 
-        leave_start = datetime.strptime(leave['Start Date'], "%Y-%m-%d")
-        leave_end = datetime.strptime(leave['End Date'], "%Y-%m-%d")
+@task
+def delete_monday_items(api_key, item_ids):
+    """
+    Delete all items from monday.com using their IDs.
 
-        # If leave starts before this month and ends after this month, take full month
-        if leave_start < first_day and leave_end > last_day:
-            leave_days += (last_day - first_day).days + 1  # Whole month
+    This task uses asyncio to delete items concurrently, making the process faster while respecting rate limits.
+
+    Parameters:
+        api_key (str): The API key for authenticating with the monday.com API.
+        item_ids (list): A list of item IDs to delete.
+
+    Returns:
+        list: A list of item IDs that were successfully deleted.
+    """
+    return asyncio.run(delete_items_concurrently(api_key, item_ids))
+
+@flow
+def monday_flow(api_key, board_id):
+    """
+    Prefect flow to fetch item IDs from monday.com and delete them.
+
+    Parameters:
+        api_key (str): The API key for authenticating with the monday.com API.
+        board_id (str): The ID of the board from which to fetch and delete items.
+    """
+    try:
+        item_ids = get_monday_item_ids(api_key, board_id)
+        print(f"Fetched item IDs: {item_ids}")
         
-        # If leave starts in the middle of the month
-        elif leave_start >= first_day and leave_start <= last_day:
-            leave_days += (min(leave_end, last_day) - leave_start).days + 1  # Count from start to either end or last day
-        
-        # If leave started before and extends into this month
-        elif leave_start < first_day and leave_end >= first_day:
-            leave_days += (leave_end - first_day).days + 1  # Count from first day to leave end
+        deleted_item_ids = delete_monday_items(api_key, item_ids)
+        print(f"Successfully deleted item IDs: {deleted_item_ids}")
+    except MondayAPIError as e:
+        logger = get_run_logger()
+        logger.error(f"Error in monday_flow: {e}")
 
-    # If leave exceeds 15 days, audits are NOT required
-    return leave_days <= 15
-
-# Example Leave Data
-leave_records = [
-    {"Person": "John Doe", "Start Date": "2024-04-25", "End Date": "2024-05-20"},  # Spans Apr-May
-    {
+# Run the flow
+if __name__ == "__main__":
+    api_key = "your_monday_api_key_here"
+    board_id = "your_board_id_here"
+    monday_flow(api_key, board_id)
