@@ -1,26 +1,25 @@
-Purpose:
-Labels for equipment are initially issued with worksheets but wear out or fade over time.
-A system is needed to request new labels efficiently.
-The system should track issued labels and their status.
-Key Functionalities:
-Label Request Submission:
+import re
 
-Users can request label replacements.
-Required details:
-Requestor (who is making the request)
-Request Date (when the request was made)
-Equipment ID (unique identifier for the equipment)
-Location (where the equipment is located)
-Approval Process:
+data = [{"description": "This is a post campaign 025"},
+        {"description": "Regular campaign launch"},
+        {"description": "Product 025"},
+        {"description": "Some other text"}]
 
-Requests should be reviewed and approved by the MES Team before printing.
-Label Printing Tracking:
+# Function to determine type based on description
+def assign_type(description):
+    description_lower = description.lower()  # Convert to lowercase for case-insensitive matching
+    contains_post_campaign = bool(re.search(r'\bpost\b.*\bcampaign\b', description_lower))
+    contains_025 = "025" in description_lower
 
-The system should record when the label was printed.
-Required field: Label Printed Date
-Possible Features:
-User Roles & Permissions: Requestors, MES Team (Approvers), and possibly Admins.
-Request Status Tracking: Pending, Approved, Rejected, Printed.
-Automated Notifications: Updates when a request is approved or a label is printed.
-Reporting & Audit Log: Track label requests over time for auditing.
-Integration with MES or Inventory System (if applicable).
+    if contains_post_campaign:
+        return "post campaign"
+    elif contains_025:
+        return "g-25"
+    return "other"
+
+# Updating the list with new 'type' column
+for entry in data:
+    entry["type"] = assign_type(entry["description"])
+
+# Print updated data
+print(data)
