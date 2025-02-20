@@ -6,15 +6,25 @@ data = [{"description": "This is a post campaign 025"},
         {"description": "Some other text"},
         {"description": "It's post campaign inspection"},
         {"description": "Campaign post inspection"},
-        {"description": "Inspection of post campaign"}]
+        {"description": "Inspection of post campaign"},
+        {"description": "Post and campaign only"},  # Should not match (missing "inspection")
+        {"description": "Inspection post"},  # Should not match (missing "campaign")
+        {"description": "Post campaign inspection 025"},  # Should match
+        {"description": "Post-campaign inspection"},  # Should match
+        {"description": "Post-campaign and inspection"},  # Should match
+        {"description": "Campaign post-inspection"},  # Should match
+        {"description": "Post-inspection without campaign"}]  # Should not match
 
 # Function to determine type based on description
 def assign_type(description):
-    description_lower = description.lower()  # Convert to lowercase for case-insensitive matching
-    contains_post_campaign = bool(re.search(r'\b(post|campaign|inspection)\b.*\b(post|campaign|inspection)\b.*\b(post|campaign|inspection)\b', description_lower))
-    contains_025 = "025" in description_lower
+    # Normalize: Replace hyphens with spaces and convert to lowercase
+    description_normalized = re.sub(r'[-]', ' ', description.lower())
 
-    if contains_post_campaign:
+    # Ensure all three words exist in the modified text
+    contains_all_three = all(word in description_normalized for word in ["post", "campaign", "inspection"])
+    contains_025 = "025" in description_normalized
+
+    if contains_all_three:
         return "post campaign"
     elif contains_025:
         return "g-25"
