@@ -22,7 +22,7 @@ def assign_type(description):
 
     # Ensure all three words exist in the modified text
     contains_all_three = all(word in description_normalized for word in ["post", "campaign", "inspection"])
-    contains_025 = "025" in description_normalized
+    contains_g034 = bool(re.search(r'\bg 034\b', description_normalized))
 
     if contains_all_three:
         return "post campaign"
