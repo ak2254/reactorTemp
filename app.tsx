@@ -1,4 +1,13 @@
-import re
+Patch('MyList', Defaults('MyList'),{Employee:{
+ '@odata.type': "#Microsoft.Azure.Connectors.SharePoint.SPListExpandedUser",
+ Department: "",
+ Claims: "i:0#.f|membership|" & UserEmailTextInput.Text,
+ DisplayName: Office365Users.UserProfileV2(UserEmailTextInput.Text).displayName,
+ Email: UserEmailTextInput.Text,
+ JobTitle: "",
+ Picture: ""
+ }
+})import re
 
 data = [{"description": "This is a post campaign 025"},
         {"description": "Regular campaign launch"},
