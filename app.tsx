@@ -1,101 +1,161 @@
-from fastapi import FastAPI, HTTPException
-import requests
-import pandas as pd
-from typing import List, Dict
+import csv
+import aiohttp
+import asyncio
+from typing import Dict, List
 
-app = FastAPI()
-
-MONDAY_API_URL = "https://api.monday.com/v2"
-MONDAY_API_KEY = "your_monday_api_key"
+# Constants
+API_KEY = "your_monday_api_key"
 BOARD_ID = "your_board_id"
-HEADERS = {"Authorization": MONDAY_API_KEY, "Content-Type": "application/json"}
-BATCH_SIZE = 300  # Batch processing size
-FETCH_BATCH = 200  # How many records to fetch at a time
+API_URL = "https://api.monday.com/v2"
+BATCH_SIZE = 200  # Number of records to process at a time
+CONCURRENT_REQUESTS = 10  # Number of concurrent API requests
 
+# Headers for Monday.com API
+headers = {
+    "Authorization": API_KEY,
+    "Content-Type": "application/json",
+}
 
-def fetch_monday_data():
-    """Fetch all records from the Monday.com board in batches."""
+async def fetch_monday_records(session: aiohttp.ClientSession) -> Dict:
+    """Fetch all records from the Monday.com board asynchronously."""
     query = """
-    query($board_id: ID!, $limit: Int!, $page: Int!) {
-        boards(ids: [$board_id]) {
-            items_page(limit: $limit, page: $page) {
-                items {
+    query {
+        boards(ids: %s) {
+            items {
+                id
+                column_values {
                     id
-                    name
-                    column_values { id text }
+                    text
                 }
             }
         }
     }
-    """
-    page = 1
-    all_records = []
-    while True:
-        response = requests.post(MONDAY_API_URL, json={"query": query, "variables": {"board_id": BOARD_ID, "limit": FETCH_BATCH, "page": page}}, headers=HEADERS)
-        data = response.json()
-        items = data.get("data", {}).get("boards", [])[0].get("items_page", {}).get("items", [])
-        if not items:
-            break
-        all_records.extend(items)
-        page += 1
-    return all_records
+    """ % BOARD_ID
 
+    async with session.post(API_URL, json={"query": query}, headers=headers) as response:
+        data = await response.json()
+        items = data["data"]["boards"][0]["items"]
 
-def load_excel_data(file_path: str) -> pd.DataFrame:
-    """Load Excel data into a DataFrame."""
-    return pd.read_excel(file_path)
+        # Convert to a dictionary: {work_order_number: item_data}
+        monday_data = {}
+        for item in items:
+            work_order_number = None
+            item_data = {}
+            for column in item["column_values"]:
+                if column["id"] == "work_order_number":  # Replace with your column ID
+                    work_order_number = column["text"]
+                item_data[column["id"]] = column["text"]
+            if work_order_number:
+                monday_data[work_order_number] = {"id": item["id"], "data": item_data}
+        return monday_data
 
+def read_csv_data(file_path: str) -> Dict:
+    """Read CSV data into a dictionary."""
+    csv_data = {}
+    with open(file_path, mode="r") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            work_order_number = row["work_order_number"]  # Replace with your column name
+            csv_data[work_order_number] = row
+    return csv_data
 
-def process_data(monday_data: List[Dict], excel_data: pd.DataFrame):
-    """Compare Monday.com records with Excel and determine actions."""
-    monday_dict = {item['name']: item for item in monday_data}  # Quick lookup by Work Order
-    excel_dict = excel_data.set_index('work_order').to_dict(orient='index')
-
-    to_update, to_add, to_delete = [], [], []
-
-    for work_order, data in excel_dict.items():
-        if work_order in monday_dict:
-            monday_entry = monday_dict[work_order]
-            if str(monday_entry['column_values']) != str(data):  # If data has changed
-                to_update.append(work_order)
-        else:
-            to_add.append(work_order)
-
-    for work_order in monday_dict:
-        if work_order not in excel_dict:
-            to_delete.append(monday_dict[work_order]['id'])
-
-    return to_update, to_add, to_delete
-
-
-def batch_process(items: List, process_function, batch_size=BATCH_SIZE):
-    """Process data in batches."""
-    for i in range(0, len(items), batch_size):
-        process_function(items[i:i + batch_size])
-
-
-def delete_monday_records(records: List[str]):
-    """Delete records from Monday.com."""
-    for record_id in records:
-        query = f"""mutation {{ delete_item (item_id: {record_id}) {{ id }} }}"""
-        requests.post(MONDAY_API_URL, json={"query": query}, headers=HEADERS)
-
-
-def add_monday_records(records: List[str]):
-    """Add new records to Monday.com."""
+async def add_records(session: aiohttp.ClientSession, records: List[Dict]):
+    """Add new records to the Monday.com board asynchronously."""
+    tasks = []
     for record in records:
-        query = f"""mutation {{ create_item (board_id: {BOARD_ID}, item_name: \"{record}\") {{ id }} }}"""
-        requests.post(MONDAY_API_URL, json={"query": query}, headers=HEADERS)
+        query = """
+        mutation {
+            create_item (board_id: %s, item_name: "%s") {
+                id
+            }
+        }
+        """ % (BOARD_ID, record["work_order_number"])  # Replace with your column name
+        tasks.append(session.post(API_URL, json={"query": query}, headers=headers))
+    responses = await asyncio.gather(*tasks)
+    for response in responses:
+        print("Added:", await response.json())
 
+async def update_records(session: aiohttp.ClientSession, records: List[Dict]):
+    """Update existing records in the Monday.com board asynchronously."""
+    tasks = []
+    for record in records:
+        item_id = record["id"]
+        updates = []
+        for column_id, value in record["data"].items():
+            updates.append(f'{column_id}: "{value}"')
+        query = """
+        mutation {
+            change_multiple_column_values (item_id: %s, board_id: %s, column_values: "{%s}") {
+                id
+            }
+        }
+        """ % (item_id, BOARD_ID, ", ".join(updates))
+        tasks.append(session.post(API_URL, json={"query": query}, headers=headers))
+    responses = await asyncio.gather(*tasks)
+    for response in responses:
+        print("Updated:", await response.json())
 
-@app.post("/sync")
-def sync_monday_board(file_path: str):
-    """API to sync Monday.com board with Excel data."""
-    monday_data = fetch_monday_data()
-    excel_data = load_excel_data(file_path)
-    to_update, to_add, to_delete = process_data(monday_data, excel_data)
+async def delete_records(session: aiohttp.ClientSession, record_ids: List[str]):
+    """Delete records from the Monday.com board asynchronously."""
+    tasks = []
+    for record_id in record_ids:
+        query = """
+        mutation {
+            delete_item (item_id: %s) {
+                id
+            }
+        }
+        """ % record_id
+        tasks.append(session.post(API_URL, json={"query": query}, headers=headers))
+    responses = await asyncio.gather(*tasks)
+    for response in responses:
+        print("Deleted:", await response.json())
 
-    batch_process(to_delete, delete_monday_records)
-    batch_process(to_add, add_monday_records)
+async def update_monday_board(session: aiohttp.ClientSession, monday_data: Dict, csv_data: Dict):
+    """Update the Monday.com board based on CSV data asynchronously."""
+    # Identify changes
+    to_add = []
+    to_update = []
+    to_delete = []
 
-    return {"message": "Sync completed", "updated": len(to_update), "added": len(to_add), "deleted": len(to_delete)}
+    # Check for updates and additions
+    for work_order, csv_row in csv_data.items():
+        if work_order in monday_data:
+            monday_row = monday_data[work_order]["data"]
+            if monday_row != csv_row:
+                to_update.append({"id": monday_data[work_order]["id"], "data": csv_row})
+        else:
+            to_add.append(csv_row)
+
+    # Check for deletions
+    for work_order, monday_row in monday_data.items():
+        if work_order not in csv_data:
+            to_delete.append(monday_row["id"])
+
+    # Process in batches
+    for i in range(0, len(to_add), BATCH_SIZE):
+        batch = to_add[i:i + BATCH_SIZE]
+        await add_records(session, batch)
+
+    for i in range(0, len(to_update), BATCH_SIZE):
+        batch = to_update[i:i + BATCH_SIZE]
+        await update_records(session, batch)
+
+    for i in range(0, len(to_delete), BATCH_SIZE):
+        batch = to_delete[i:i + BATCH_SIZE]
+        await delete_records(session, batch)
+
+async def main():
+    """Main function to run the script asynchronously."""
+    async with aiohttp.ClientSession() as session:
+        # Step 1: Fetch data from Monday.com
+        monday_data = await fetch_monday_records(session)
+
+        # Step 2: Read CSV data
+        csv_data = read_csv_data("data.csv")
+
+        # Step 3: Update Monday.com board
+        await update_monday_board(session, monday_data, csv_data)
+
+if __name__ == "__main__":
+    asyncio.run(main())
