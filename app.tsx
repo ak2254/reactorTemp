@@ -1,7 +1,7 @@
 import requests
 
 # Constants
-API_KEY = "your_monday_api_key"  # Replace with your Monday.com API key
+API_KEY = "your_monday_api_key"  # Replace with your actual API key
 BOARD_ID = 123456789  # Replace with your board ID
 URL = "https://api.monday.com/v2"
 HEADERS = {
@@ -9,13 +9,12 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# GraphQL query template
-QUERY_TEMPLATE = """
-query ($board_id: ID!, $limit: Int!, $cursor: String) {
+# GraphQL query templates
+QUERY_FIRST_PAGE = """
+query ($board_id: ID!, $limit: Int!) {
   boards(ids: [$board_id]) {
     items_page(
       limit: $limit
-      cursor: $cursor
       query_params: { order_by: [{ column_id: "name", direction: desc }] }
     ) {
       cursor
@@ -33,28 +32,53 @@ query ($board_id: ID!, $limit: Int!, $cursor: String) {
 }
 """
 
-def fetch_records(board_id, limit=500):
-    """Fetch all records with pagination and error handling."""
+QUERY_NEXT_PAGE = """
+query ($board_id: ID!, $limit: Int!, $cursor: String!) {
+  boards(ids: [$board_id]) {
+    items_page(
+      limit: $limit
+      cursor: $cursor
+    ) {
+      cursor
+      items {
+        name
+        column_values {
+          column {
+            title
+          }
+          text
+        }
+      }
+    }
+  }
+}
+"""
+
+def fetch_all_records(board_id, limit=500):
+    """Fetch all records from Monday.com with proper pagination."""
     records = []
-    cursor = None  # Start without a cursor
+    cursor = None
+    first_request = True  # Used to differentiate the first request
 
     while True:
-        # Prepare GraphQL query variables
-        variables = {
-            "board_id": board_id,
-            "limit": limit,
-            "cursor": cursor
-        }
+        # Select the appropriate query
+        if first_request:
+            query = QUERY_FIRST_PAGE
+            variables = {"board_id": board_id, "limit": limit}
+            first_request = False
+        else:
+            query = QUERY_NEXT_PAGE
+            variables = {"board_id": board_id, "limit": limit, "cursor": cursor}
 
         try:
-            response = requests.post(URL, json={"query": QUERY_TEMPLATE, "variables": variables}, headers=HEADERS)
-            response.raise_for_status()  # Raise an error for non-200 responses
+            # Make the request
+            response = requests.post(URL, json={"query": query, "variables": variables}, headers=HEADERS)
+            response.raise_for_status()  # Raise an error for HTTP failures
             
+            # Parse JSON response
             data = response.json()
-            
-            # Debugging: Print API response if needed
-            # print(data)  
-            
+
+            # Extract board data
             boards = data.get("data", {}).get("boards", [])
             if not boards or boards[0] is None:
                 print("No boards found or invalid response structure.")
@@ -62,18 +86,18 @@ def fetch_records(board_id, limit=500):
 
             items_page = boards[0].get("items_page", {})
             items = items_page.get("items", [])
-            cursor = items_page.get("cursor")
+            cursor = items_page.get("cursor")  # Get next page cursor
 
             if items is None:
                 print("Warning: 'items' is None. Possible API issue.")
                 break
 
-            records.extend(items)  # Append records
+            records.extend(items)  # Store retrieved records
 
-            print(f"Fetched {len(records)} records...")  # Track progress
+            print(f"Fetched {len(records)} records so far...")  # Progress tracking
 
-            if not cursor:
-                break  # Stop when cursor is None
+            if not cursor:  # Stop fetching if there's no more cursor
+                break
 
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
@@ -85,7 +109,7 @@ def fetch_records(board_id, limit=500):
     return records
 
 # Fetch all records
-all_records = fetch_records(BOARD_ID)
+all_records = fetch_all_records(BOARD_ID)
 
-# Print total records fetched
+# Print total count
 print(f"Total records retrieved: {len(all_records)}")
