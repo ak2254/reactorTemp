@@ -1,3 +1,54 @@
+import requests
+
+API_KEY = "your_api_key"
+URL = "https://api.monday.com/v2"
+
+headers = {
+    "Authorization": API_KEY,
+    "Content-Type": "application/json"
+}
+
+query = """
+query ($cursor: String) {
+    boards (limit: 5, cursor: $cursor) {
+        pageInfo {
+            nextCursor
+        }
+        items {
+            id
+            name
+        }
+    }
+}
+"""
+
+cursor = None  # Start with no cursor
+
+while True:
+    variables = {"cursor": cursor}
+    response = requests.post(URL, json={"query": query, "variables": variables}, headers=headers)
+    data = response.json()
+
+    if "data" in data and "boards" in data["data"]:
+        boards = data["data"]["boards"]
+        
+        for board in boards:
+            print(f"Board ID: {board['id']}, Name: {board['name']}")
+
+        # Get next cursor for pagination
+        page_info = boards.get("pageInfo", {})
+        cursor = page_info.get("nextCursor")
+
+        # Break if no more data
+        if not cursor:
+            break
+    else:
+        print("Error or no more data:", data)
+        break
+
+
+
+
 import aiohttp
 import asyncio
 from typing import Dict, List, Optional
