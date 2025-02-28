@@ -1,3 +1,29 @@
+def format_monday_data(monday_records):
+    """Convert Monday.com response into a list of dictionaries with column names as keys."""
+    formatted_records = []
+
+    for item in monday_records:
+        formatted_item = {}
+
+        # Add name field if needed
+        if "name" in item:
+            formatted_item["Name"] = item["name"]
+
+        # Extract column values
+        for col in item.get("column_values", []):
+            column_name = col.get("column", {}).get("title", "Unknown Column")
+            text_value = col.get("text", "")
+
+            formatted_item[column_name] = text_value  # Store formatted key-value pair
+
+        formatted_records.append(formatted_item)
+
+    return formatted_records
+
+
+
+
+
 import requests
 
 # Constants
