@@ -1,3 +1,24 @@
+def find_missing_work_orders(monday_records, existing_data):
+    """
+    Find 'Work Order' values in existing data that are NOT present in Monday data.
+    """
+    # Convert Monday records into a set of Work Order values
+    monday_work_orders = {record.get("Work Order", "").strip() for record in monday_records}
+
+    # Store missing records
+    add_tomonday_data = []
+
+    for record in existing_data:
+        work_order = record.get("Work Order", "").strip()
+        
+        if work_order and work_order not in monday_work_orders:
+            add_tomonday_data.append(record)
+
+    return add_tomonday_data
+
+
+
+
 def format_monday_data(monday_records):
     """Convert Monday.com response into a list of dictionaries with column names as keys."""
     formatted_records = []
