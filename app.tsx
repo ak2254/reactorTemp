@@ -1,3 +1,51 @@
+def find_work_orders_to_delete(monday_records, existing_data):
+    """
+    Find 'Work Order' values in Monday.com data that are NOT in the original data.
+    Collect their corresponding item IDs for deletion.
+    """
+    # Convert original data into a set of Work Order values
+    original_work_orders = {record.get("Work Order", "").strip() for record in existing_data}
+
+    # Store item IDs of work orders that should be deleted
+    work_orders_to_delete = []
+
+    for record in monday_records:
+        work_order = record.get("Work Order", "").strip()
+        item_id = record.get("item_id")  # Extract the item ID from Monday data
+
+        if work_order and work_order not in original_work_orders and item_id:
+            work_orders_to_delete.append(item_id)
+
+    return work_orders_to_delete
+
+
+# Example Monday data (formatted from API response)
+monday_data = [
+    {"Work Order": "WO123", "item_id": 111}, 
+    {"Work Order": "WO456", "item_id": 222},
+    {"Work Order": "WO999", "item_id": 333}  # This work order is NOT in original data
+]
+
+# Example original dataset
+existing_data = [
+    {"Work Order": "WO123", "Column A": "Value A"},
+    {"Work Order": "WO456", "Column B": "Value B"},
+]
+
+# Find Work Orders to delete
+item_ids_to_delete = find_work_orders_to_delete(monday_data, existing_data)
+
+# Output results
+print(f"Total records to delete: {len(item_ids_to_delete)}")
+print("Item IDs to delete:", item_ids_to_delete)
+
+
+
+
+
+
+
+
 def find_missing_work_orders(monday_records, existing_data):
     """
     Find 'Work Order' values in existing data that are NOT present in Monday data.
