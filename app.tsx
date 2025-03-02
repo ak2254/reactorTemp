@@ -1,3 +1,34 @@
+def find_records_to_replace(monday_data, original_data):
+    """Find items where Work Order exists but has different hash values."""
+    
+    # Convert original data into a dictionary with hashes
+    original_lookup = {
+        record["Work Order"]: {"hash": hash_record(record), "record": record}
+        for record in original_data
+    }
+
+    records_to_delete = []  # Store item_ids to delete
+    records_to_add = []  # Store new records to add
+
+    for monday_item in monday_data:
+        work_order = monday_item.get("Work Order")
+        item_id = monday_item.get("item_id")
+
+        # Check if Work Order exists in original data
+        if work_order in original_lookup:
+            original_hash = original_lookup[work_order]["hash"]
+            monday_hash = hash_record(monday_item)
+
+            # If hashes are different, mark for deletion & re-add
+            if original_hash != monday_hash:
+                records_to_delete.append(item_id)
+                records_to_add.append(original_lookup[work_order]["record"])
+
+    return records_to_delete, records_to_add
+
+
+
+
 def find_work_orders_to_delete(monday_records, existing_data):
     """
     Find 'Work Order' values in Monday.com data that are NOT in the original data.
