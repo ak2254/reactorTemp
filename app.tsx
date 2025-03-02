@@ -1,3 +1,16 @@
+def hash_record(record, all_keys):
+    """Generate a hash for a formatted record, ensuring all keys exist."""
+    
+    # Ensure record has all keys, filling missing ones with None
+    normalized_record = {key: record.get(key, None) for key in all_keys}
+    
+    # Convert to sorted JSON string for consistent hashing
+    record_str = json.dumps(normalized_record, sort_keys=True)
+    
+    return hashlib.sha256(record_str.encode()).hexdigest()
+
+
+
 def hash_record(record):
     """Generate a hash for a record by converting it to a consistent JSON string."""
     # Ensure record is sorted to prevent hash mismatches due to key order
