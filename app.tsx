@@ -1,3 +1,12 @@
+def hash_record(record):
+    """Generate a hash for a record by converting it to a consistent JSON string."""
+    # Ensure record is sorted to prevent hash mismatches due to key order
+    record_str = json.dumps(record, sort_keys=True)
+    
+    # Create SHA256 hash
+    return hashlib.sha256(record_str.encode()).hexdigest()
+
+
 def find_records_to_replace(monday_data, original_data):
     """Find items where Work Order exists but has different hash values."""
     
