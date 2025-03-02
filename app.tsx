@@ -9,6 +9,43 @@ def hash_record(record, all_keys):
     
     return hashlib.sha256(record_str.encode()).hexdigest()
 
+# Extract all unique keys from original_data
+all_keys = {key for record in original_data for key in record.keys()}
+
+# Create hashes for Monday formatted data
+monday_hashed = {record["Work Order"]: hash_record(record, all_keys) for record in monday_formatted_data}
+
+# Create hashes for original data
+original_hashed = {record["Work Order"]: hash_record(record, all_keys) for record in original_data}
+
+# Find records that need to be deleted (exist in Monday but changed)
+records_to_delete = [
+    monday_item["item_id"] for monday_item in monday_formatted_data
+    if monday_item["Work Order"] in original_hashed and 
+    monday_hashed[monday_item["Work Order"]] != original_hashed[monday_item["Work Order"]]
+]
+
+# Find records that need to be added (new or changed)
+records_to_add = [
+    record for record in original_data
+    if record["Work Order"] not in monday_hashed or 
+    hash_record(record, all_keys) != monday_hashed[record["Work Order"]]
+]
+
+
+
+
+def hash_record(record, all_keys):
+    """Generate a hash for a formatted record, ensuring all keys exist."""
+    
+    # Ensure record has all keys, filling missing ones with None
+    normalized_record = {key: record.get(key, None) for key in all_keys}
+    
+    # Convert to sorted JSON string for consistent hashing
+    record_str = json.dumps(normalized_record, sort_keys=True)
+    
+    return hashlib.sha256(record_str.encode()).hexdigest()
+
 
 
 def hash_record(record):
