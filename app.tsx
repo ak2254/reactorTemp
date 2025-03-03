@@ -27,7 +27,16 @@ def find_records_to_replace(monday_formatted_data, original_data):
         else:
             # Compare field-by-field to detect changes
             original_record = original_lookup[work_order]
-            if any(monday_record.get(key, "") != original_record.get(key, "") for key in original_record.keys()):
+            differing_columns = []
+            
+            # Compare columns and track which ones have differences
+            for key in original_record.keys():
+                if monday_record.get(key, "") != original_record.get(key, ""):
+                    differing_columns.append(key)
+
+            if differing_columns:
+                # If there are differences, print out the differing columns
+                print(f"Work Order: {work_order} has differences in columns: {', '.join(differing_columns)}")
                 # If any field differs, delete & re-add
                 records_to_delete.append(monday_record["item_id"])
                 records_to_add.append(original_record)
