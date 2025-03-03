@@ -2,8 +2,74 @@ from datetime import datetime
 
 from datetime import datetime
 from datetime import datetime
+from datetime import datetime
 
-def print_key_types(original_data):
+def reformat_specified_dates(original_data, date_columns):
+    """
+    Converts specified date columns to 'MM/DD/YYYY' format, removes time information.
+    Only applies to columns that are in the date_columns list.
+    """
+    formatted_data = []
+    
+    for record in original_data:
+        new_record = {}
+        for key, value in record.items():
+            # Check if the column is in the specified date columns list
+            if key in date_columns:
+                if isinstance(value, str):  # If it's a string
+                    try:
+                        # Try to parse the date in 'YYYY-MM-DD' format
+                        date_obj = datetime.strptime(value, "%Y-%m-%d")
+                        new_record[key] = date_obj.strftime("%m/%d/%Y")  # Convert to MM/DD/YYYY
+                    except ValueError:
+                        try:
+                            # Handle 'DD-MM-YYYY' format
+                            date_obj = datetime.strptime(value, "%d-%m-%Y")
+                            new_record[key] = date_obj.strftime("%m/%d/%Y")
+                        except ValueError:
+                            try:
+                                # Handle 'YYYY-MM-DD HH:MM:SS' format with time
+                                date_obj = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                                new_record[key] = date_obj.strftime("%m/%d/%Y")  # Only keep the date (removes time)
+                            except ValueError:
+                                # If it's not a date, leave the original value
+                                new_record[key] = value
+                elif isinstance(value, (datetime, datetime.date)):  # If it's already a date or datetime
+                    new_record[key] = value.strftime("%m/%d/%Y")  # Directly format it
+                else:
+                    # If it's not a date, leave the original value
+                    new_record[key] = value
+            else:
+                # If the column is not in the list of date_columns, keep the original value
+                new_record[key] = value
+
+        formatted_data.append(new_record)
+
+    return formatted_data
+
+
+# Example usage:
+original_data = [
+    {"Work Order": "WO123", "Date": "2024-03-02", "Amount": 1000, "Status": "Open"},
+    {"Work Order": "WO124", "Date": "2024-03-03", "Amount": 1200, "Status": "Closed"}
+]
+
+# Specify the columns you want to format as dates
+date_columns = ["Date"]
+
+formatted_data = reformat_specified_dates(original_data, date_columns)
+print(formatted_data)
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    def print_key_types(original_data):
     # Get the first record in the original data
     if original_data:
         first_record = original_data[0]
