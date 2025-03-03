@@ -1,3 +1,42 @@
+from datetime import datetime
+
+def reformat_dates(data):
+    """
+    Converts all date values in the dataset to 'MM/DD/YYYY' format.
+    """
+    formatted_data = []
+    
+    for record in data:
+        new_record = {}
+        for key, value in record.items():
+            if isinstance(value, str):  # Ensure it's a string before attempting date conversion
+                try:
+                    # Try to parse the date with multiple formats (common formats from Monday.com)
+                    date_obj = datetime.strptime(value, "%Y-%m-%d")  # Example: 2024-03-02
+                    new_record[key] = date_obj.strftime("%m/%d/%Y")  # Convert to MM/DD/YYYY
+                except ValueError:
+                    try:
+                        date_obj = datetime.strptime(value, "%d-%m-%Y")  # Example: 02-03-2024
+                        new_record[key] = date_obj.strftime("%m/%d/%Y")
+                    except ValueError:
+                        # If not a date, keep original value
+                        new_record[key] = value
+            else:
+                new_record[key] = value
+
+        formatted_data.append(new_record)
+
+    return formatted_data
+
+
+
+
+
+
+
+
+
+
 def find_records_to_replace(monday_formatted_data, original_data):
     """
     Identify records that need to be deleted from Monday.com and new records that need to be added.
