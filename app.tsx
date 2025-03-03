@@ -1,38 +1,40 @@
-def hash_record(record, common_keys):
-    """Generate a hash for a record using only common keys."""
-    values = [str(record.get(key, "")) for key in sorted(common_keys)]
-    record_string = "|".join(values)
-    return hashlib.md5(record_string.encode()).hexdigest()
-
-def find_changes(monday_data_list, original_data_list):
-    """Compare records and return item_ids to delete and records to re-add."""
+def find_records_to_replace(monday_formatted_data, original_data):
+    """
+    Identify records that need to be deleted from Monday.com and new records that need to be added.
     
-    # Convert original data list into a dictionary (key = work order, value = record)
-    original_dict = {rec["work Order"]: rec for rec in original_data_list}
+    - If a record exists in both but has changed, delete & re-add.
+    - If a record exists in original_data but not in Monday, add it.
+    - If a record exists in Monday but not in original_data, delete it.
+    """
+    
+    # Create a lookup dictionary for original records by "Work Order"
+    original_lookup = {record["Work Order"]: record for record in original_data}
 
-    # Lists to store results
-    item_ids_to_delete = []
+    # Create a lookup dictionary for Monday records by "Work Order"
+    monday_lookup = {record["Work Order"]: record for record in monday_formatted_data}
+
+    # Records to delete
+    records_to_delete = []
+
+    # Records to add
     records_to_add = []
 
-    for monday_record in monday_data_list:
-        work_order = monday_record["work Order"]
-        
-        # If work order is in both Monday and original data
-        if work_order in original_dict:
-            original_record = original_dict[work_order]
-
-            # Find common keys
-            common_keys = set(monday_record.keys()) & set(original_record.keys())
-
-            # Hash and compare
-            monday_hash = hash_record(monday_record, common_keys)
-            original_hash = hash_record(original_record, common_keys)
-
-            if monday_hash != original_hash:
-                # Store item_id for deletion
-                item_ids_to_delete.append(monday_record["item_id"])
-                
-                # Store updated record to re-add
+    # Compare records
+    for work_order, monday_record in monday_lookup.items():
+        if work_order not in original_lookup:
+            # Work Order is in Monday but not in original data → Delete
+            records_to_delete.append(monday_record["item_id"])
+        else:
+            # Compare field-by-field to detect changes
+            original_record = original_lookup[work_order]
+            if any(monday_record.get(key, "") != original_record.get(key, "") for key in original_record.keys()):
+                # If any field differs, delete & re-add
+                records_to_delete.append(monday_record["item_id"])
                 records_to_add.append(original_record)
 
-    return item_ids_to_delete, records_to_add
+    # Find new records to add (exist in original but not in Monday)
+    for work_order, original_record in original_lookup.items():
+        if work_order not in monday_lookup:
+            records_to_add.append(original_record)
+
+    return records_to_delete, records_to_add
