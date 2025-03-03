@@ -1,8 +1,48 @@
 from datetime import datetime
 
 from datetime import datetime
+from datetime import datetime
 
 def reformat_dates_original_data(original_data):
+    """
+    Converts all date values in the original dataset to 'MM/DD/YYYY' format.
+    Removes any time information, so only the date is preserved.
+    """
+    formatted_data = []
+    
+    for record in original_data:
+        new_record = {}
+        for key, value in record.items():
+            if isinstance(value, str):  # Ensure it's a string before attempting date conversion
+                try:
+                    # Try to parse the date with multiple formats (common formats from original data)
+                    date_obj = datetime.strptime(value, "%Y-%m-%d")  # Example: 2024-03-02
+                    new_record[key] = date_obj.strftime("%m/%d/%Y")  # Convert to MM/DD/YYYY
+                except ValueError:
+                    try:
+                        date_obj = datetime.strptime(value, "%d-%m-%Y")  # Example: 02-03-2024
+                        new_record[key] = date_obj.strftime("%m/%d/%Y")
+                    except ValueError:
+                        try:
+                            # Handle case where there might be a time part like "2024-03-02 15:30:00"
+                            date_obj = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")  # Example: 2024-03-02 15:30:00
+                            new_record[key] = date_obj.strftime("%m/%d/%Y")  # Only keep the date part
+                        except ValueError:
+                            # If not a date, keep original value
+                            new_record[key] = value
+            else:
+                new_record[key] = value
+
+        formatted_data.append(new_record)
+
+    return formatted_data
+
+
+    
+    
+    
+    
+    def reformat_dates_original_data(original_data):
     """
     Converts all date values in the original dataset to 'MM/DD/YYYY' format.
     """
