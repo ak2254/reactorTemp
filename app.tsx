@@ -1,6 +1,53 @@
 import unicodedata
 import requests  # Assuming you are using requests for fetching data
 
+import csv
+import hashlib
+
+def calculate_checksum(row):
+    """
+    This function will take a row (a list of column values) and calculate its checksum.
+    You can change the hash algorithm if needed (e.g., SHA256, MD5).
+    """
+    # Join all columns in the row to a single string and encode it as bytes
+    row_str = ''.join(str(cell) for cell in row)
+    # Calculate checksum (SHA256 in this case)
+    checksum = hashlib.sha256(row_str.encode('utf-8')).hexdigest()
+    return checksum
+
+def add_checksum_to_csv(input_file, output_file):
+    # Open the original CSV file for reading
+    with open(input_file, mode='r', newline='', encoding='utf-8') as infile:
+        reader = csv.reader(infile)
+        
+        # Read the header (first row)
+        header = next(reader)
+        
+        # Add a new column for checksum
+        header.append('checksum')
+        
+        # Open the output CSV file for writing
+        with open(output_file, mode='w', newline='', encoding='utf-8') as outfile:
+            writer = csv.writer(outfile)
+            writer.writerow(header)  # Write the updated header
+            
+            # Process each row in the CSV
+            for row in reader:
+                checksum = calculate_checksum(row)  # Calculate checksum for the row
+                row.append(checksum)  # Add checksum to the row
+                writer.writerow(row)  # Write the row with checksum to the output file
+
+# Example usage
+input_file = 'input.csv'  # Your input CSV file
+output_file = 'output_with_checksum.csv'  # The output CSV with the checksum column
+add_checksum_to_csv(input_file, output_file)
+
+
+
+
+
+
+
 # Function to normalize special characters (like dashes or other special symbols)
 def normalize_text(text):
     if isinstance(text, str):
