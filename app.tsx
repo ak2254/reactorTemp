@@ -3,6 +3,97 @@ from datetime import datetime
 from datetime import datetime
 from datetime import datetime
 from datetime import datetime
+from datetime import datetime
+
+def reformat_specified_dates(original_data, date_columns):
+    """
+    Converts specified date columns to 'MM/DD/YYYY' format, removes time information.
+    Only applies to columns that are in the date_columns list.
+    """
+    formatted_data = []
+    
+    for record in original_data:
+        new_record = {}
+        for key, value in record.items():
+            # Check if the column is in the specified date columns list
+            if key in date_columns:
+                if isinstance(value, str):  # If it's a string
+                    value = value.strip().strip("'").strip('"')  # Remove single/double quotes and extra spaces
+                    print(f"Checking date string for key {key}: {value}")  # Debug print
+                    try:
+                        # Handle string date with time (like '1/23/2025 0:00')
+                        if " " in value:
+                            value = value.split(" ")[0]  # Remove time part
+                            print(f"Date with time detected, using: {value}")  # Debug print
+                        
+                        # Try to parse the date in 'MM/DD/YYYY' format
+                        date_obj = datetime.strptime(value, "%m/%d/%Y")
+                        print(f"Parsed date (MM/DD/YYYY): {date_obj}")  # Debug print
+                        new_record[key] = date_obj.strftime("%m/%d/%Y")  # Convert to MM/DD/YYYY
+                    except ValueError:
+                        try:
+                            # Handle 'YYYY-MM-DD' format
+                            date_obj = datetime.strptime(value, "%Y-%m-%d")
+                            print(f"Parsed date (YYYY-MM-DD): {date_obj}")  # Debug print
+                            new_record[key] = date_obj.strftime("%m/%d/%Y")
+                        except ValueError:
+                            try:
+                                # Handle 'DD-MM-YYYY' format
+                                date_obj = datetime.strptime(value, "%d-%m-%Y")
+                                print(f"Parsed date (DD-MM-YYYY): {date_obj}")  # Debug print
+                                new_record[key] = date_obj.strftime("%m/%d/%Y")
+                            except ValueError:
+                                try:
+                                    # Handle 'YY-MM-DD' format (for cases like '20-1-03')
+                                    date_obj = datetime.strptime(value, "%y-%m-%d")
+                                    print(f"Parsed date (YY-MM-DD): {date_obj}")  # Debug print
+                                    new_record[key] = date_obj.strftime("%m/%d/%Y")
+                                except ValueError:
+                                    try:
+                                        # Handle 'DD-MM-YY' format (for cases like '3-1-20')
+                                        date_obj = datetime.strptime(value, "%d-%m-%y")
+                                        print(f"Parsed date (DD-MM-YY): {date_obj}")  # Debug print
+                                        new_record[key] = date_obj.strftime("%m/%d/%Y")
+                                    except ValueError:
+                                        try:
+                                            # Handle 'YYYY-MM-DD HH:MM:SS' format with time
+                                            date_obj = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                                            print(f"Parsed date (YYYY-MM-DD HH:MM:SS): {date_obj}")  # Debug print
+                                            new_record[key] = date_obj.strftime("%m/%d/%Y")  # Only keep the date (removes time)
+                                        except ValueError:
+                                            # If it's not a date, leave the original value
+                                            print(f"Value is not a valid date: {value}")  # Debug print
+                                            new_record[key] = value
+                elif isinstance(value, (datetime, datetime.date)):  # If it's already a date or datetime
+                    new_record[key] = value.strftime("%m/%d/%Y")  # Directly format it
+                else:
+                    # If it's not a date, leave the original value
+                    new_record[key] = value
+            else:
+                # If the column is not in the list of date_columns, keep the original value
+                new_record[key] = value
+
+        formatted_data.append(new_record)
+
+    return formatted_data
+
+
+# Example usage:
+original_data = [
+    {"Work Order": "WO123", "Date": "1/23/2025 0:00", "Amount": 1000, "Status": "Open"},
+    {"Work Order": "WO124", "Date": "2024-03-03", "Amount": 1200, "Status": "Closed"}
+]
+
+# Specify the columns you want to format as dates
+date_columns = ["Date"]
+
+formatted_data = reformat_specified_dates(original_data, date_columns)
+print(formatted_data)
+
+
+
+
+
 
 def reformat_specified_dates(original_data, date_columns):
     """
