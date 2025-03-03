@@ -1,17 +1,19 @@
 from datetime import datetime
 
-def reformat_dates(data):
+from datetime import datetime
+
+def reformat_dates_original_data(original_data):
     """
-    Converts all date values in the dataset to 'MM/DD/YYYY' format.
+    Converts all date values in the original dataset to 'MM/DD/YYYY' format.
     """
     formatted_data = []
     
-    for record in data:
+    for record in original_data:
         new_record = {}
         for key, value in record.items():
             if isinstance(value, str):  # Ensure it's a string before attempting date conversion
                 try:
-                    # Try to parse the date with multiple formats (common formats from Monday.com)
+                    # Try to parse the date with multiple formats (common formats from original data)
                     date_obj = datetime.strptime(value, "%Y-%m-%d")  # Example: 2024-03-02
                     new_record[key] = date_obj.strftime("%m/%d/%Y")  # Convert to MM/DD/YYYY
                 except ValueError:
@@ -27,6 +29,7 @@ def reformat_dates(data):
         formatted_data.append(new_record)
 
     return formatted_data
+
 
 
 
