@@ -3,7 +3,22 @@ from datetime import datetime
 from datetime import datetime
 from datetime import datetime
 
-def reformat_dates_original_data(original_data):
+def print_key_types(original_data):
+    # Get the first record in the original data
+    if original_data:
+        first_record = original_data[0]
+        
+        # Print the type of each key's value in the first record
+        key_types = [(key, type(value)) for key, value in first_record.items()]
+        
+        # Print the list of types
+        print(key_types)
+    else:
+        print("The data is empty.")
+
+    
+    
+    def reformat_dates_original_data(original_data):
     """
     Converts all date values in the original dataset to 'MM/DD/YYYY' format.
     Removes any time information (e.g., 00:00).
