@@ -1,8 +1,13 @@
-UniquePersonRoles =
-SUMMARIZE(
-    PersonnelData,
-    PersonnelData[PersonName],
-    PersonnelData[RoleName],
-    "TargetAudits", MAX(PersonnelData[TargetAudits]),
-    "CompletedAudits", MAX(PersonnelData[CompletedAudits])
+WRRRP_Count :=
+CALCULATE(
+    COUNTROWS(YourTable),
+    FILTER(
+        YourTable,
+        YourTable[RequestType] = "wrrrp"
+            && (
+                ISBLANK(YourTable[AssignedTo])
+                || TRIM(YourTable[AssignedTo]) = ""
+                || LOWER(YourTable[AssignedTo]) = "anjali"
+            )
+    )
 )
