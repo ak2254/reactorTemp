@@ -5,3 +5,11 @@ def serialize_row(row: dict) -> dict:
         k: v.isoformat() if isinstance(v, datetime) else v
         for k, v in row.items()
     }
+return {
+        k: (
+            v.isoformat() if isinstance(v, datetime)
+            else ", ".join(v) if isinstance(v, list)
+            else str(v) if v is not None else ""
+        )
+        for k, v in row.items()
+    }
