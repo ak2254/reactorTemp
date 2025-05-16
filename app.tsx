@@ -1,19 +1,36 @@
-@task
-def sync_sql_to_sharepoint(new_data: List[Dict], sharepoint_data: List[Dict]):
-    sp_lookup = {row["task_id"]: row for row in sharepoint_data}
+# SharePoint auth setup (change to env vars in production)
+SHAREPOINT_SITE_URL = "https://yourtenant.sharepoint.com/sites/yoursite"
+SHAREPOINT_USERNAME = "your.name@yourtenant.com"
+SHAREPOINT_PASSWORD = "your_password"
+SHAREPOINT_LIST_NAME = "Your List Name"
 
-    for new_row in new_data:
-        task_id = new_row["task_id"]
-        new_checksum = new_row["checksum"]
+# Create a connection to the SharePoint site
+def get_sp_context():
+    ctx = ClientContext(SHAREPOINT_SITE_URL).with_credentials(
+        UserCredential(SHAREPOINT_USERNAME, SHAREPOINT_PASSWORD)
+    )
+    return ctx
 
-        if task_id in sp_lookup:
-            sp_row = sp_lookup[task_id]
-            if sp_row.get("checksum") != new_checksum:
-                # Need to update
-                update_fields = {k: new_row[k] for k in new_row if k != "checksum"}  # or however you want
-                update_fields["checksum"] = new_checksum  # update checksum too
-                update_sharepoint_row(sp_row["ID"], update_fields)
-        else:
-            # Add new row
-            add_sharepoint_row(new_row)
+
+
+def add_sharepoint_row(new_row: dict):
+    ctx = get_sp_context()
+    sp_list = ctx.web.lists.get_by_title(SHAREPOINT_LIST_NAME)
+
+    # Adjust keys to match actual SharePoint column internal names
+    sp_item = sp_list.add_item(new_row)
+    ctx.execute_query()
+    print(f"✅ Added new SharePoint row: {new_row['task_id']}")
+
+
+
+def update_sharepoint_row(row_id: str, updated_fields: dict):
+    ctx = get_sp_context()
+    sp_list = ctx.web.lists.get_by_title(SHAREPOINT_LIST_NAME)
+
+    item = sp_list.get_item_by_id(row_id)
+    item.set_property_multiple(updated_fields)
+    item.update()
+    ctx.execute_query()
+    print(f"♻️ Updated SharePoint row ID {row_id} with: {updated_fields}")
 
