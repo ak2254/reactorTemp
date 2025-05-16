@@ -1,15 +1,12 @@
-rom datetime import datetime
-
-def serialize_row(row: dict) -> dict:
-    return {
-        k: v.isoformat() if isinstance(v, datetime) else v
-        for k, v in row.items()
-    }
-return {
-        k: (
-            v.isoformat() if isinstance(v, datetime)
-            else ", ".join(v) if isinstance(v, list)
-            else str(v) if v is not None else ""
-        )
-        for k, v in row.items()
-    }
+def update_sharepoint_row(row_id: str, updated_fields: dict):
+    ctx = get_sp_context()
+    sp_list = ctx.web.lists.get_by_title(SHAREPOINT_LIST_NAME)
+    
+    try:
+        item = sp_list.get_item_by_id(row_id)
+        item.set_property_multiple(updated_fields)
+        item.update()
+        ctx.execute_query()
+        print(f"♻️ Updated SharePoint row ID {row_id} with: {updated_fields}")
+    except ClientRequestException as ex:
+        print(f"❌ Failed to update SharePoint row ID {row_id}: {ex}")
