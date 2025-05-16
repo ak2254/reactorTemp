@@ -3,34 +3,19 @@ from prefect import flow, task
 import pandas as pd
 import sqlalchemy
 
-# Replace with your actual DB URL
-DB_URL = "mssql+pyodbc://username:password@dsn_name"
+# 1. Convert list of tuples into list of dicts
+data_dicts = [dict(zip(header, row)) for row in sql_data]
 
-@task
-def fetch_task_data():
-    engine = sqlalchemy.create_engine(DB_URL)
+# 2. Define the checksum function
+def generate_row_checksum(row: dict, columns: tuple, hash_algo="sha256") -> str:
+    row_str = '|'.join(str(row[col]) for col in columns)
+    h = hashlib.new(hash_algo)
+    h.update(row_str.encode('utf-8'))
+    return h.hexdigest()
 
-    query = """
-    SELECT
-        task.id AS task_id,
-        main.id AS main_id,
-        main.title AS main_title,
-        main.sub_category,
-        txt.description_of_change,
-        main.created_date,
-        main.change_type,
-        main.change_category,
-        task.title AS task_title
-    FROM task
-    JOIN main ON task.parent_id = main.id
-    JOIN txt ON txt.id = main.id
-    WHERE
-        task.is_closed = 'No'
-        AND task.assigned_to_first_name = 'Anj'
-        AND task.assigned_to_last_name = 'kaur'
-    """
+# 3. Choose columns to include in checksum
+checksum_columns = ("title", "etch")
 
-    with engine.connect() as conn:
-        df = pd.read_sql(query, conn)
-
-    return df
+# 4. Add the checksum to each row
+for row in data_dicts:
+    row["checksum"] = generate_row_checksum(row, checksum_columns)
