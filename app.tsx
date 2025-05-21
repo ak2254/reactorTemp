@@ -1,47 +1,34 @@
-from prefect import flow, task
-from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
+from typing import List, Dict
 import calendar
 
-
-@task
-def build_question_summary(data: List[Dict]) -> List[Dict[str, str]]:
-    """
-    Process raw WO records and return a single-row result:
-    [{'Title': ..., 'Question': ..., 'Target': ..., 'Jan 2025': ..., 'Feb 2025': ..., ...}]
-    """
-
-    # Setup
-    title = "OOT Late Closures"
-    question = "Count of OOT work orders closed late"
-    target = 8  # example target
+def calculate_metric(question_title: str, data: List[Dict]) -> Dict[str, int]:
     monthly_counts = defaultdict(int)
+    current_year = datetime.now().year
 
-    for record in data:
+    for row in data:
         try:
-            if record.get("request_type", "").lower() != "oot":
-                continue
+            match question_title:
 
-            finish_date = datetime.strptime(record["finish_date"], "%Y-%m-%d")
-            due_date = datetime.strptime(record["due_date"], "%Y-%m-%d")
+                case "Open Over 100 Days":
+                    if row.get("status", "").upper() == "OPEN":
+                        reported_date_str = row.get("reported_date")
+                        if reported_date_str:
+                            reported_date = datetime.strptime(reported_date_str, "%Y-%m-%d")
+                            due_date = reported_date + timedelta(days=100)
 
-            if finish_date > due_date:
-                month_key = finish_date.strftime("%b %Y")  # Example: "Jan 2025"
-                monthly_counts[month_key] += 1
+                            if datetime.now() > due_date:
+                                month_key = due_date.strftime("%b %Y")
+                                monthly_counts[month_key] += 1
+
+                case _:
+                    print(f"Unknown question type: {question_title}")
 
         except Exception as e:
-            print(f"Skipping record due to error: {e}")
+            print(f"Error processing row: {e}")
 
-    # Fill all months Jan–Dec 2025 for display consistency
-    full_row = {
-        "Title": title,
-        "Question": question,
-        "Target": str(target)
+    return {
+        f"{calendar.month_abbr[m]} {current_year}": monthly_counts.get(f"{calendar.month_abbr[m]} {current_year}", 0)
+        for m in range(1, 13)
     }
-
-    for month in range(1, 13):
-        month_str = f"{calendar.month_abbr[month]} 2025"  # Jan 2025, Feb 2025, ...
-        full_row[month_str] = str(monthly_counts.get(month_str, 0))
-
-    return [full_row]
