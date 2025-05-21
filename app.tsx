@@ -28,7 +28,7 @@ def calculate_metric(question_title: str, data: List[Dict]) -> Dict[str, int]:
         except Exception as e:
             print(f"Error processing row: {e}")
 
-    return {
-        f"{calendar.month_abbr[m]} {current_year}": monthly_counts.get(f"{calendar.month_abbr[m]} {current_year}", 0)
-        for m in range(1, 13)
-    }
+    return (
+        {f"{calendar.month_abbr[m]} 2025": monthly_counts.get(f"{calendar.month_abbr[m]} 2025", 0) for m in range(1, 13)},
+        matched_rows
+    )
