@@ -1,13 +1,17 @@
  for row in data:
         try:
-            if row.get("request_type") != "NPI" or row.get("status") != "CLOSED":
-                continue
+            approval_date = datetime.strptime(row["approval_date"], "%Y-%m-%d")
+            approval_due_date = datetime.strptime(row["approval_due_date"], "%Y-%m-%d")
 
-            finish_date = datetime.strptime(row["finish_date"], "%Y-%m-%d")
-            due_date = datetime.strptime(row["due_date"], "%Y-%m-%d")
-
-            if finish_date > due_date:
-                month_key = due_date.strftime("%b %Y")
-                monthly_counts[month_key] += 1
-                row["days_late"] = (finish_date - due_date).days
-                used_records.append(row)
+            submission_date_str = row.get("submission_date")
+            if submission_date_str:
+                submission_date = datetime.strptime(submission_date_str, "%Y-%m-%d")
+                if approval_date > submission_date:
+                    month_key = approval_due_date.strftime("%b %Y")
+                    monthly_counts[month_key] += 1
+                    used_records.append(row)
+            else:
+                if approval_date > datetime.today():
+                    month_key = approval_due_date.strftime("%b %Y")
+                    monthly_counts[month_key] += 1
+                    used_records.append(row)
