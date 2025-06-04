@@ -1,7 +1,10 @@
-SELECT *
+SELECT 
+  *, 
+  LOWER(CONCAT(SUBSTRING_INDEX(capa.assigned_to_first_name, ' ', 1), ' ', capa.assigned_to_lastname)) AS assigned_to
 FROM capa
 WHERE LOWER(CONCAT(SUBSTRING_INDEX(capa.assigned_to_first_name, ' ', 1), ' ', capa.assigned_to_lastname))
-      IN ('anjali smith', 'brian lee', 'sophie brown');
+      IN ({name_placeholder});
+
 
 
 
