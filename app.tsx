@@ -1,15 +1,10 @@
-SELECT 
-  *, 
-  LOWER(CONCAT(SUBSTRING_INDEX(capa.assigned_to_first_name, ' ', 1), ' ', capa.assigned_to_lastname)) AS assigned_to
-FROM capa
-WHERE LOWER(CONCAT(SUBSTRING_INDEX(capa.assigned_to_first_name, ' ', 1), ' ', capa.assigned_to_lastname))
-      IN ({name_placeholder});
+def normalize_last_first(name: str) -> str:
+    # Expected format: "Last, First Middle"
+    if ',' in name:
+        last, rest = name.split(',', 1)
+        first = rest.strip().split()[0]  # Get only the first name
+        return f"{last.strip().lower()}, {first.lower()}"
+    return name.strip().lower()
 
-
-
-
-def normalize_name(name: str) -> str:
-    parts = name.strip().split()
-    if len(parts) >= 2:
-        return f"{parts[0].lower()} {parts[-1].lower()}"
-    return name.lower()
+normalized_names = {normalize_last_first(name) for name in ALL_names}
+name_placeholder = ", ".join(f"'{name}'" for name in normalized_names)
