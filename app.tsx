@@ -1,7 +1,6 @@
-SELECT 
-  *, 
-  CAST(assigned_to_lastname AS VARCHAR) || ', ' || SPLIT_PART(CAST(assigned_to_first_name AS VARCHAR), ' ', 1) AS assigned_to
-FROM capa
-WHERE LOWER(
-    CAST(assigned_to_lastname AS VARCHAR) || ', ' || SPLIT_PART(CAST(assigned_to_first_name AS VARCHAR), ' ', 1)
-) IN ({name_placeholder});
+Enhance Reliability of Existing Prefect Workflows with Automated Testing
+
+Implement unit and integration tests for critical Prefect flows, 
+ integrated with CI/CD, targeting 80% coverage. Improves reliability, 
+ supports GxP data integrity, and reduces risk of failure in production. 
+ Enables faster, safer updates to automation that support key manufacturing and compliance processes.
