@@ -23,6 +23,7 @@ You’ll see how all components (prompting, embeddings, vector search, APIs, UI)
 ✅ Best for: Full-stack learners, builders, and tinkerers who want a unified deep-dive from idea to deployment.
 
 🔍 2. AI Engineering Bootcamp: Retrieval-Augmented Generation (Zero To Mastery)
+https://zerotomastery.io/courses/ai-engineer-bootcamp-retrieval-augmented-generation/
 📘 What You’ll Learn:
 Deep LLM + transformer theory (tokenization, self-attention)
 
