@@ -47,6 +47,8 @@ Gives you depth in retrieval, document QA, and multi-agent workflows.
 ✅ Best for: Developers or data scientists aiming to master RAG and build production-grade apps.
 
 🔍 3. LangChain for LLM Application Development (DeepLearning.AI)
+https://www.deeplearning.ai/short-courses/langchain-for-llm-application-development/
+
 📘 What You’ll Learn:
 LangChain basics (Chains, Agents, Tools, Memory)
 
@@ -64,6 +66,7 @@ You’ll learn modular thinking: how to break LLM systems into pieces (retriever
 ✅ Best for: Beginners or those who want to start coding fast with LLMs.
 
 🔍 4. Master RAG: Ultimate Retrieval-Augmented Generation Course (Udemy)
+https://www.udemy.com/course/llm-retrieval-augmented-generation-masterclass/?couponCode=ST16MT230625G1
 📘 What You’ll Learn:
 Advanced RAG techniques: chunking, reranking, retrieval fusion
 
@@ -101,6 +104,7 @@ Great exposure to open-source tooling.
 
 🔍 6. Advanced Retrieval-Augmented Generation (FutureLearn)
 📘 What You’ll Learn:
+https://www.futurelearn.com/courses/rag-for-large-language-models
 Hybrid search (BM25 + dense)
 
 RAG pipelines with multimodal inputs
