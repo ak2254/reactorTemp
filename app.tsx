@@ -1,5 +1,8 @@
 . Generative AI Architectures with LLM, Prompt, RAG, Vector DB (Udemy)
+https://www.udemy.com/course/generative-ai-architectures-with-llm-prompt-rag-vector-db/?couponCode=ST16MT230625G1
+
 📘 What You’ll Learn:
+
 Transformers (attention, encoder/decoder structure)
 
 LLM internals (tokens, embeddings, pretraining)
