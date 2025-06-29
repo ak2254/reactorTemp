@@ -1,11 +1,23 @@
+ctx = ClientContext(site_url).with_credentials(client_credentials)
 
-from office365.sharepoint.client_context import ClientContext
-
-ctx = ClientContext(site_url).with_credentials(credentials)
-list_obj = ctx.web.lists.get_by_title("Your List Name")
-
-# Select specific fields by internal name
-items = list_obj.items.select("Id", "Title", "Employee_x0020_Name", "Status").top(100).get().execute_query()
+list_tasks = ctx.web.lists.get_by_title("Tasks")
+items = (
+    list_tasks.items.get()
+    .select(
+        [
+            "*",
+            "AssignedTo/Id",
+            "AssignedTo/Title",
+            "Predecessors/Id",
+            "Predecessors/Title",
+        ]
+    )
+    .expand(["AssignedTo", "Predecessors"])
+    .top(10)
+    .execute_query()
+)
 
 for item in items:
-    print(item.properties)
+    assigned_to = item.properties.get("AssignedTo", {}).get("Id", None)
+    predecessors_ids = [v.get("Id", None) for k, v in item.properties.get("Predecessors", {}).items()]
+    print("AssignedTo Id: {0}, Predecessors Ids: {1}".format(assigned_to, predecessors_ids))
