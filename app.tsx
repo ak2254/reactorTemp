@@ -1,5 +1,13 @@
-Connection Type: File-based integration with API automation
-The Cognos report is exported as a CSV file to a shared network drive. A script hosted on an internal server picks up this file and uploads the data to Monday.com using the Monday API, authenticated via API token.
+Authentication Type:
 
-🔐 Optional Security/Infra Detail:
-This process involves no direct connection between the application and Cognos. Data is transferred through a controlled file drop, and the upload to Monday.com is handled securely via a server-side script using HTTPS and token-based authentication.
+Infor to SharePoint: File drop with automated update via Power Automate using a service account
+
+Prefect to Monday.com: API-based authentication using a Monday API token
+All components require authenticated access. No anonymous or public access is used at any point in the flow.
+
+🔹 Connection Type:
+Connection Type:
+
+Infor to SharePoint: File-based integration using an XML file dumped by Infor macros into SharePoint (daily or ad hoc)
+
+SharePoint to Monday.com: API-based integration — Power Automate (service account) updates the SharePoint file every 10 minutes; Prefect workflow then reads the XML and uploads to Monday.com via the Monday REST API
