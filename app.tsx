@@ -1,23 +1,5 @@
-ctx = ClientContext(site_url).with_credentials(client_credentials)
+Connection Type: File-based integration with API automation
+The Cognos report is exported as a CSV file to a shared network drive. A script hosted on an internal server picks up this file and uploads the data to Monday.com using the Monday API, authenticated via API token.
 
-list_tasks = ctx.web.lists.get_by_title("Tasks")
-items = (
-    list_tasks.items.get()
-    .select(
-        [
-            "*",
-            "AssignedTo/Id",
-            "AssignedTo/Title",
-            "Predecessors/Id",
-            "Predecessors/Title",
-        ]
-    )
-    .expand(["AssignedTo", "Predecessors"])
-    .top(10)
-    .execute_query()
-)
-
-for item in items:
-    assigned_to = item.properties.get("AssignedTo", {}).get("Id", None)
-    predecessors_ids = [v.get("Id", None) for k, v in item.properties.get("Predecessors", {}).items()]
-    print("AssignedTo Id: {0}, Predecessors Ids: {1}".format(assigned_to, predecessors_ids))
+🔐 Optional Security/Infra Detail:
+This process involves no direct connection between the application and Cognos. Data is transferred through a controlled file drop, and the upload to Monday.com is handled securely via a server-side script using HTTPS and token-based authentication.
