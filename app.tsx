@@ -1,4 +1,310 @@
 import openpyxl
+import csv
+from difflib import get_close_matches, SequenceMatcher
+import re
+
+def clean_name(name):
+    """Clean and normalize names for better matching"""
+    if not name or name == '':
+        return ''
+    
+    # Convert to lowercase and remove extra spaces
+    name = str(name).lower().strip()
+    
+    # Remove common prefixes/suffixes and special characters
+    name = re.sub(r'[^\w\s]', '', name)  # Remove special characters
+    name = re.sub(r'\s+', ' ', name)     # Replace multiple spaces with single space
+    
+    return name
+
+def similarity_ratio(name1, name2):
+    """Calculate similarity ratio between two names"""
+    return SequenceMatcher(None, clean_name(name1), clean_name(name2)).ratio()
+
+def find_best_match(target_name, user_names, threshold=0.6):
+    """
+    Find the best matching name from user_names for target_name
+    Returns tuple: (best_match_name, similarity_score)
+    """
+    if not target_name or target_name == '':
+        return None, 0
+    
+    cleaned_target = clean_name(target_name)
+    if not cleaned_target:
+        return None, 0
+    
+    best_match = None
+    best_score = 0
+    
+    for user_name in user_names:
+        if not user_name or user_name == '':
+            continue
+            
+        score = similarity_ratio(cleaned_target, user_name)
+        
+        if score > best_score and score >= threshold:
+            best_match = user_name
+            best_score = score
+    
+    return best_match, best_score
+
+def load_users_data(workbook_path, sheet_name='Sheet1'):
+    """Load users data from Excel file"""
+    wb = openpyxl.load_workbook(workbook_path)
+    ws = wb[sheet_name]
+    
+    # Get headers from first row
+    headers = []
+    for cell in ws[1]:
+        headers.append(cell.value)
+    
+    # Find column indices
+    user_name_col = None
+    email_col = None
+    
+    for i, header in enumerate(headers):
+        if header and 'name' in str(header).lower():
+            user_name_col = i
+        elif header and 'email' in str(header).lower():
+            email_col = i
+    
+    if user_name_col is None:
+        raise ValueError("Could not find User_Name column in users data")
+    if email_col is None:
+        raise ValueError("Could not find Email column in users data")
+    
+    # Load user data
+    users = {}
+    user_names = []
+    
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[user_name_col]:  # Skip empty names
+            name = str(row[user_name_col]).strip()
+            email = str(row[email_col]).strip() if row[email_col] else ''
+            users[name] = {
+                'name': name,
+                'email': email,
+                'full_row': row
+            }
+            user_names.append(name)
+    
+    wb.close()
+    return users, user_names
+
+def load_resolution_data(csv_path):
+    """Load resolution data from CSV file"""
+    resolution_data = []
+    headers = []
+    assigned_to_col = None
+    
+    with open(csv_path, 'r', encoding='utf-8', newline='') as file:
+        # Try to detect delimiter
+        sample = file.read(1024)
+        file.seek(0)
+        
+        # Common delimiters to try
+        delimiters = [',', ';', '\t', '|']
+        delimiter = ','
+        
+        for delim in delimiters:
+            if sample.count(delim) > 0:
+                delimiter = delim
+                break
+        
+        reader = csv.reader(file, delimiter=delimiter)
+        
+        # Read headers
+        headers = next(reader)
+        headers = [str(h).strip() if h else '' for h in headers]
+        
+        # Find assigned_to column
+        for i, header in enumerate(headers):
+            if header and 'assigned' in header.lower():
+                assigned_to_col = i
+                break
+        
+        if assigned_to_col is None:
+            raise ValueError("Could not find 'assigned to' column in resolution data")
+        
+        # Read data rows
+        for row_num, row in enumerate(reader, start=2):
+            # Ensure row has enough columns
+            while len(row) < len(headers):
+                row.append('')
+            
+            resolution_data.append({
+                'row_num': row_num,
+                'assigned_to': str(row[assigned_to_col]).strip() if len(row) > assigned_to_col and row[assigned_to_col] else '',
+                'original_row': row
+            })
+    
+    return resolution_data, headers, assigned_to_col
+
+def process_fuzzy_matching(users_file, resolution_file, output_file, 
+                          users_sheet='Sheet1', 
+                          similarity_threshold=0.6, output_format='csv'):
+    """
+    Main function to process fuzzy matching between users and resolution data
+    output_format: 'csv' or 'excel'
+    """
+    print("Loading users data...")
+    users, user_names = load_users_data(users_file, users_sheet)
+    print(f"Loaded {len(users)} users")
+    
+    print("Loading resolution data...")
+    resolution_data, headers, assigned_to_col = load_resolution_data(resolution_file)
+    print(f"Loaded {len(resolution_data)} resolution records")
+    
+    print("Performing fuzzy matching...")
+    matches_found = 0
+    
+    # Process each resolution record
+    for record in resolution_data:
+        assigned_name = record['assigned_to']
+        
+        if assigned_name:
+            best_match, score = find_best_match(assigned_name, user_names, similarity_threshold)
+            
+            if best_match:
+                user_info = users[best_match]
+                record['matched_user_name'] = user_info['name']
+                record['matched_user_email'] = user_info['email']
+                record['match_score'] = round(score, 3)
+                matches_found += 1
+            else:
+                record['matched_user_name'] = ''
+                record['matched_user_email'] = ''
+                record['match_score'] = 0
+        else:
+            record['matched_user_name'] = ''
+            record['matched_user_email'] = ''
+            record['match_score'] = 0
+    
+    print(f"Found matches for {matches_found} out of {len(resolution_data)} records")
+    
+    # Create output file
+    print(f"Creating output file: {output_file}")
+    
+    # Add new headers
+    new_headers = headers + ['Matched_User_Name', 'Matched_User_Email', 'Match_Score']
+    
+    if output_format.lower() == 'csv':
+        # Save as CSV
+        with open(output_file, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            
+            # Write headers
+            writer.writerow(new_headers)
+            
+            # Write data
+            for record in resolution_data:
+                row_data = record['original_row'] + [
+                    record['matched_user_name'],
+                    record['matched_user_email'],
+                    record['match_score']
+                ]
+                writer.writerow(row_data)
+    else:
+        # Save as Excel
+        wb_out = openpyxl.Workbook()
+        ws_out = wb_out.active
+        
+        # Write headers
+        for col, header in enumerate(new_headers, 1):
+            ws_out.cell(row=1, column=col, value=header)
+        
+        # Write data
+        for record in resolution_data:
+            row_data = record['original_row'] + [
+                record['matched_user_name'],
+                record['matched_user_email'],
+                record['match_score']
+            ]
+            ws_out.append(row_data)
+        
+        wb_out.save(output_file)
+        wb_out.close()
+    
+    print(f"Output saved to: {output_file}")
+    return matches_found, len(resolution_data)
+
+def print_matching_summary(users_file, resolution_file, users_sheet='Sheet1', 
+                          similarity_threshold=0.6):
+    """
+    Print a summary of potential matches without creating output file
+    """
+    users, user_names = load_users_data(users_file, users_sheet)
+    resolution_data, _, _ = load_resolution_data(resolution_file)
+    
+    print(f"\n=== FUZZY MATCHING SUMMARY ===")
+    print(f"Similarity threshold: {similarity_threshold}")
+    print(f"Total users: {len(users)}")
+    print(f"Total resolution records: {len(resolution_data)}")
+    print("\nMatching results:")
+    print("-" * 80)
+    
+    for i, record in enumerate(resolution_data[:10]):  # Show first 10 for demo
+        assigned_name = record['assigned_to']
+        if assigned_name:
+            best_match, score = find_best_match(assigned_name, user_names, similarity_threshold)
+            status = "✓ MATCH" if best_match else "✗ NO MATCH"
+            
+            print(f"{i+1:2d}. {assigned_name:<25} -> {best_match or 'None':<25} "
+                  f"(Score: {score:.3f}) {status}")
+        else:
+            print(f"{i+1:2d}. {'<EMPTY>':<25} -> {'None':<25} (Score: 0.000) ✗ NO MATCH")
+    
+    if len(resolution_data) > 10:
+        print(f"... and {len(resolution_data) - 10} more records")
+
+# Example usage
+if __name__ == "__main__":
+    # File paths (update these with your actual file paths)
+    users_excel = "users.xlsx"          # Your users Excel file
+    resolution_csv = "resolution.csv"   # Your resolution CSV file
+    output_file = "matched_results.csv" # Output file (can be .csv or .xlsx)
+    
+    try:
+        # Option 1: Just preview the matching results
+        print("=== PREVIEW MODE ===")
+        print_matching_summary(
+            users_file=users_excel,
+            resolution_file=resolution_csv,
+            users_sheet='Sheet1',           # Update sheet name if different
+            similarity_threshold=0.6        # Adjust threshold as needed (0.0 to 1.0)
+        )
+        
+        print("\n" + "="*50)
+        
+        # Option 2: Process and create output file
+        print("=== PROCESSING MODE ===")
+        
+        # Determine output format based on file extension
+        output_format = 'excel' if output_file.endswith('.xlsx') else 'csv'
+        
+        matches, total = process_fuzzy_matching(
+            users_file=users_excel,
+            resolution_file=resolution_csv,
+            output_file=output_file,
+            users_sheet='Sheet1',           # Update sheet name if different
+            similarity_threshold=0.6,       # Adjust threshold as needed
+            output_format=output_format
+        )
+        
+        print(f"\nSUCCESS! Matched {matches}/{total} records")
+        print(f"Results saved to: {output_file}")
+        
+    except FileNotFoundError as e:
+        print(f"Error: Could not find file - {e}")
+        print("Please update the file paths in the script")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+
+
+
+import openpyxl
 from difflib import get_close_matches, SequenceMatcher
 import re
 
