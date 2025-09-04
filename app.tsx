@@ -1,3 +1,16 @@
+cat > prefect.yaml << 'EOF'
+name: company-prefect-flows
+prefect-version: 2.14.0
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      repository: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+      branch: "{{ branch }}"
+
+build:
+  - prefect.deployments.steps.pip_install_requirements:
+      requirements_file: requirements.txt
+EOF
 cat > deployments/prod/deployment-configs.yaml << 'EOF'
 deployments:
   - name: hello-world-prod
