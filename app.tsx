@@ -1,3 +1,44 @@
+cat > deployments/prod/deployment-configs.yaml << 'EOF'
+deployments:
+  - name: hello-world-prod
+    entrypoint: flows/examples/hello_world.py:hello_world_flow
+    parameters:
+      name: "Production"
+      environment: prod
+    work_pool:
+      name: "AGK"
+    schedule:
+      cron: "0 9 * * *"
+    tags:
+      - prod
+      - example
+EOF
+cat > deployments/dev/deployment-configs.yaml << 'EOF'
+deployments:
+  - name: hello-world-dev
+    entrypoint: flows/examples/hello_world.py:hello_world_flow
+    parameters:
+      name: "Dev Environment"
+      environment: dev
+    work_pool:
+      name: "AGK"
+    schedule:
+      cron: "*/30 * * * *"
+    tags:
+      - dev
+      - example
+EOF
+cat > .gitignore << 'EOF'
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+.pytest_cache/
+.coverage
+*.log
+.DS_Store
+EOF
 import openpyxl
 import csv
 from difflib import get_close_matches, SequenceMatcher
