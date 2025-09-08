@@ -1,3 +1,41 @@
+from prefect import flow, task
+from datetime import datetime
+
+@task
+def say_hello(name: str):
+    """A simple task that says hello"""
+    message = f"Hello, {name}! Current time: {datetime.now()}"
+    print(message)
+    return message
+
+@task  
+def process_greeting(message: str, environment: str):
+    """Process the greeting message"""
+    processed = f"[{environment.upper()}] {message}"
+    print(processed)
+    return processed
+
+@flow(name="Hello World Flow", log_prints=True)
+def hello_world_flow(name: str = "World", environment: str = "dev"):
+    """
+    A simple hello world flow for testing
+    
+    Args:
+        name: Name to greet
+        environment: Environment (dev/prod)
+    """
+    greeting = say_hello(name)
+    result = process_greeting(greeting, environment)
+    return result
+
+if __name__ == "__main__":
+    # Test locally
+    hello_world_flow(name="Local Test", environment="local")
+
+
+
+
+
 cat > .github/workflows/deploy-dev-local.yml << 'YAML'
 name: Deploy to Dev Environment (Local Test)
 
