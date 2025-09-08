@@ -1,136 +1,85 @@
-from prefect import flow, task
-from datetime import datetime
-
-@task
-def say_hello(name: str):
-    """A simple task that says hello"""
-    message = f"Hello, {name}! Current time: {datetime.now()}"
-    print(message)
-    return message
-
-@task  
-def process_greeting(message: str, environment: str):
-    """Process the greeting message"""
-    processed = f"[{environment.upper()}] {message}"
-    print(processed)
-    return processed
-
-@flow(name="Hello World Flow", log_prints=True)
-def hello_world_flow(name: str = "World", environment: str = "dev"):
-    """
-    A simple hello world flow for testing
-    
-    Args:
-        name: Name to greet
-        environment: Environment (dev/prod)
-    """
-    greeting = say_hello(name)
-    result = process_greeting(greeting, environment)
-    return result
-
-if __name__ == "__main__":
-    # Test locally
-    hello_world_flow(name="Local Test", environment="local")
-
-
-
-
-
-cat > .github/workflows/deploy-dev-local.yml << 'YAML'
-name: Deploy to Dev Environment (Local Test)
-
-on:
-  push:
-    branches: [ dev ]
-  pull_request:
-    branches: [ dev ]
-
-jobs:
-  test-and-deploy:
-    runs-on: self-hosted
-    env:
-      PREFECT_API_URL: ${{ secrets.PREFECT_API_URL }}
-      PREFECT_API_KEY: ${{ secrets.PREFECT_API_KEY }}
-      PREFECT_API_SSL_CERT: "/Users/yourusername/certs/prefect_cert.pem"  # <-- change this to your local path
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: python -m pytest tests/ -v || echo "No tests found, skipping..."
-
-      - name: Lint code
-        run: python -m flake8 flows/ --max-line-length=100 || echo "Linting completed"
-
-      - name: Install Prefect CLI
-        run: pip install "prefect>=2.14.0"
-
-      - name: Configure Prefect Server
-        run: |
-          prefect config set PREFECT_API_URL="${PREFECT_API_URL}"
-          prefect config set PREFECT_API_KEY="${PREFECT_API_KEY}"
-          prefect config set PREFECT_API_SSL_CERT="${PREFECT_API_SSL_CERT}"
-
-      - name: Deploy all dev flows
-        run: prefect deploy --all -c deployments/dev/deployment-configs.yaml
-YAML
-
-
-
-
-
-
-
-
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run tests
-        run: python -m pytest tests/ -v || echo "No tests found, skipping..."
-
-      - name: Lint code
-        run: python -m flake8 flows/ --max-line-length=100 || echo "Linting completed"
-
-  deploy-dev:
-    needs: test
-    runs-on: self-hosted
-    if: github.ref == 'refs/heads/dev'
-    env:
-      PREFECT_API_URL: "http://ka2345.abc.com:4200/api"
-      # If your server needs an API key later, add:
-      # PREFECT_API_KEY: ${{ secrets.PREFECT_API_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install Prefect CLI
-        run: pip install "prefect>=2.14.0"
-
-      - name: Show Prefect version (sanity check)
-        run: prefect version
-
-      - name: Deploy all dev flows
-        run: prefect deploy --all -c deployments/dev/deployment-configs.yaml
-YAML
-
-
-
-cat > requirements.txt << 'EOF'
-prefect>=2.14.0
-pandas>=1.5.0
-requests>=2.28.0
-pytest>=7.0.0
-flake8>=5.0.0
-EOF
+test 
+Prefect Flows CI/CD Workflow – Step by Step
+Phase 0: Prerequisites
+Prefect server is running (e.g., ka2345.abc.com:4200)
+Prefect work pools and workers are configured (e.g., dev-pool)
+GitHub repository created with:
+flows/ directory for flow code
+deployments/dev/ (and optionally prod/) for deployment configs
+.github/workflows/ for GitHub Actions workflows
+Self-hosted GitHub Actions runner installed on the server (or local machine for testing)
+Secrets added in GitHub: PREFECT_API_URL, PREFECT_API_KEY
+Phase 1: Local Development
+Developer writes/updates flows in flows/ directory.
+Updates deployment configs in deployments/dev/deployment-configs.yaml.
+Tests flows locally:
+python flows/examples/hello_world.py
+Phase 2: Push Code to GitHub
+Commit your changes:
+git add .
+git commit -m "Add/update flow"
+git push origin dev
+GitHub automatically detects the push and triggers the Dev workflow.
+Phase 3: GitHub Actions Runner
+The self-hosted runner (on server or local machine) picks up the workflow job.
+Workflow executes steps:
+Checkout repo: actions/checkout@v4 → pulls latest code automatically.
+Install Python dependencies: pip install -r requirements.txt
+Configure Prefect CLI (API URL, API key, SSL cert if needed)
+Apply deployment configs:
+prefect deployment apply deployments/dev/deployment-configs.yaml
+Phase 4: Prefect Deployment Registration
+Prefect server reads the deployment configs.
+Creates or updates deployments defined in the YAML file (e.g., hello-world-dev).
+Existing deployments not listed in the YAML are untouched.
+Phase 5: Flow Execution by Workers
+Prefect workers connected to the pool (and optional queue) detect new or updated deployments.
+When scheduled or manually triggered:
+Worker picks up the job
+Executes the flow code (latest version from the server checkout)
+Logs and outputs are sent to Prefect UI
+Phase 6: Feedback / Monitoring
+Developer or team can verify:
+Deployments in Prefect UI (hello-world-dev)
+Manual runs via UI → logs show latest code executed
+Scheduled runs happen automatically (if a schedule is set)
+Phase 7: Production Deployment (Optional)
+Once flows are tested in Dev:
+Create a pull request: dev → main
+Merge PR → triggers Prod workflow on server runner
+Prod workflow steps are the same as Dev workflow but:
+Uses deployments/prod/deployment-configs.yaml
+Uses Prod secrets (PREFECT_API_URL_PROD, PREFECT_API_KEY_PROD)
+Deploys flows to Prod environment, ready for workers to execute
+Phase 8: Repeat for Updates
+Any future changes:
+Update flows locally
+Push to dev → Dev workflow runs → Prefect Dev deployment updated
+Test → merge to main → Prod workflow runs → Prefect Prod updated
+Visual Diagram (Simplified)
+[Local Machine]
+   |
+   v
+ Push code to GitHub
+   |
+   v
+[GitHub Actions Workflow]
+   |
+   v
+[Self-hosted Runner on Server]
+   |-- checkout repo (latest code)
+   |-- install dependencies
+   |-- apply deployment configs
+   |
+   v
+[Prefect Server] <---> [Prefect Workers]
+   |                     |
+   |                     v
+   |                 execute flow
+   v                     |
+View deployments & logs <--
+Key Points
+Runner on same server as workers → no VPN or network drive needed.
+Checkout step ensures server always has latest repo.
+Only deployments listed in YAML are updated — other flows are untouched.
+CI/CD process works with one branch for dev and optionally main for prod.
