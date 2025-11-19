@@ -96,7 +96,11 @@ def transform_work_orders(work_orders: List[Dict]) -> List[Dict]:
         # Calculate derived fields
         year = reported_date.year
         quarter = get_quarter(reported_date)
+        # 🆕 NEW: Extract month for monthly metrics
+        month = reported_date.month
         year_quarter = f"{year}-Q{quarter}"
+        # 🆕 NEW: Format year-month (e.g., 2024-01, 2024-02)
+        year_month = f"{year}-{month:02d}"
         days_open = calculate_days_open(reported_date, finished_date)
         is_late = wo["Status"] == "Open" and days_open > 100
         is_completed = wo["Status"] == "Completed"
@@ -106,7 +110,9 @@ def transform_work_orders(work_orders: List[Dict]) -> List[Dict]:
             **wo,  # Include all original fields
             "Year": year,
             "Quarter": quarter,
+            "Month": month,  # 🆕 NEW: Month number (1-12)
             "Year_Quarter": year_quarter,
+            "Year_Month": year_month,  # 🆕 NEW: Year-Month string for grouping
             "Days_Open": days_open,
             "Is_Late": is_late,
             "Is_Completed": is_completed
