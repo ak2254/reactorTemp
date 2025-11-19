@@ -166,7 +166,105 @@ def calculate_quarterly_metrics(work_orders: List[Dict]) -> List[Dict]:
     return quarterly_metrics
 
 
-@task(name="Calculate Work Type Metrics")
+@task(name="Calculate Monthly Metrics")
+def calculate_monthly_metrics(work_orders: List[Dict]) -> List[Dict]:
+    """Aggregate work orders by year-month"""
+    
+    # Group by year-month
+    monthly_groups = defaultdict(list)
+    for wo in work_orders:
+        key = wo["Year_Month"]
+        monthly_groups[key].append(wo)
+    
+    # Calculate metrics for each month
+    monthly_metrics = []
+    for year_month, orders in monthly_groups.items():
+        # Split year and month
+        year, month = year_month.split("-")
+        
+        # Calculate aggregations
+        total_wos = len(orders)
+        late_wos = sum(1 for wo in orders if wo["Is_Late"])
+        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
+        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
+        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
+        
+        # Calculate percentages
+        completion_rate = (completed_wos / total_wos * 100) if total_wos > 0 else 0
+        late_wo_percentage = (late_wos / total_wos * 100) if total_wos > 0 else 0
+        
+        monthly_metrics.append({
+            "Year": int(year),
+            "Month": int(month),
+            "Year_Month": year_month,
+            "Total_WOs": total_wos,
+            "Total_Reported_WOs": total_wos,
+            "Late_WOs": late_wos,
+            "Completed_WOs": completed_wos,
+            "Open_WOs": open_wos,
+            "Avg_Days_Open": round(avg_days_open, 2),
+            "Completion_Rate": round(completion_rate, 2),
+            "Late_WO_Percentage": round(late_wo_percentage, 2)
+        })
+    
+    # Sort by year and month
+    monthly_metrics.sort(key=lambda x: (x["Year"], x["Month"]))
+    
+    print(f"Calculated metrics for {len(monthly_metrics)} months")
+    return monthly_metrics
+
+
+
+
+# 🆕 NEW FUNCTION: Calculate Monthly Metrics
+@task(name="Calculate Monthly Metrics")
+def calculate_monthly_metrics(work_orders: List[Dict]) -> List[Dict]:
+    """Aggregate work orders by year-month"""
+    
+    # Group by year-month
+    monthly_groups = defaultdict(list)
+    for wo in work_orders:
+        key = wo["Year_Month"]
+        monthly_groups[key].append(wo)
+    
+    # Calculate metrics for each month
+    monthly_metrics = []
+    for year_month, orders in monthly_groups.items():
+        # Split year and month
+        year, month = year_month.split("-")
+        
+        # Calculate aggregations
+        total_wos = len(orders)
+        late_wos = sum(1 for wo in orders if wo["Is_Late"])
+        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
+        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
+        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
+        
+        # Calculate percentages
+        completion_rate = (completed_wos / total_wos * 100) if total_wos > 0 else 0
+        late_wo_percentage = (late_wos / total_wos * 100) if total_wos > 0 else 0
+        
+        monthly_metrics.append({
+            "Year": int(year),
+            "Month": int(month),
+            "Year_Month": year_month,
+            "Total_WOs": total_wos,
+            "Total_Reported_WOs": total_wos,
+            "Late_WOs": late_wos,
+            "Completed_WOs": completed_wos,
+            "Open_WOs": open_wos,
+            "Avg_Days_Open": round(avg_days_open, 2),
+            "Completion_Rate": round(completion_rate, 2),
+            "Late_WO_Percentage": round(late_wo_percentage, 2)
+        })
+    
+    # Sort by year and month
+    monthly_metrics.sort(key=lambda x: (x["Year"], x["Month"]))
+    
+    print(f"Calculated metrics for {len(monthly_metrics)} months")
+    return monthly_metrics
+
+
 def calculate_worktype_metrics(work_orders: List[Dict]) -> List[Dict]:
     """Aggregate work orders by work type and quarter"""
     
@@ -289,13 +387,15 @@ def work_order_etl_pipeline(work_orders: List[Dict]):
     
     # Calculate various metrics
     quarterly_metrics = calculate_quarterly_metrics(transformed_data)
-    site_metrics = calculate_site_metrics(transformed_data)
+    monthly_metrics = calculate_monthly_metrics(transformed_data)
+    worktype_metrics = calculate_worktype_metrics(transformed_data)
     workgroup_metrics = calculate_workgroup_metrics(transformed_data)
     
     # Export all datasets
     detail_file = export_to_csv(transformed_data, "work_orders_detail.csv")
     quarterly_file = export_to_csv(quarterly_metrics, "work_orders_quarterly.csv")
-    site_file = export_to_csv(site_metrics, "work_orders_by_site.csv")
+    monthly_file = export_to_csv(monthly_metrics, "work_orders_monthly.csv")
+    worktype_file = export_to_csv(worktype_metrics, "work_orders_by_worktype.csv")
     workgroup_file = export_to_csv(workgroup_metrics, "work_orders_by_workgroup.csv")
     
     # Print summary
@@ -305,13 +405,15 @@ def work_order_etl_pipeline(work_orders: List[Dict]):
     print(f"Generated files:")
     print(f"  - {detail_file}")
     print(f"  - {quarterly_file}")
-    print(f"  - {site_file}")
+    print(f"  - {monthly_file}")
+    print(f"  - {worktype_file}")
     print(f"  - {workgroup_file}")
     
     return {
         "detail": transformed_data,
         "quarterly": quarterly_metrics,
-        "site": site_metrics,
+        "monthly": monthly_metrics,
+        "worktype": worktype_metrics,
         "workgroup": workgroup_metrics
     }
 
