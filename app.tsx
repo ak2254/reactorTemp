@@ -18,6 +18,13 @@ def parse_date(date_str: str) -> datetime:
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
+# 🆕 NEW: Get current year and today's date
+CURRENT_YEAR = datetime.now().year
+CURRENT_MONTH = datetime.now().month
+CURRENT_QUARTER = (CURRENT_MONTH - 1) // 3 + 1
+TODAY = datetime.now()
+
+
 @task
 def process_data(raw_data: List[List], headers: List[str]) -> List[Dict]:
     """Convert list of lists to dicts and add calculated fields"""
@@ -68,18 +75,23 @@ def process_data(raw_data: List[List], headers: List[str]) -> List[Dict]:
 def calculate_metrics(data: List[Dict]) -> tuple:
     """Calculate quarterly, monthly, and owner metrics"""
     
+    # 🆕 UPDATED: Create all quarters and months up to end of current year
+    all_quarters = [f"{CURRENT_YEAR}-Q{q}" for q in range(1, 5)]
+    all_months = [f"{CURRENT_YEAR}-{m:02d}" for m in range(1, 13)]
+    
     # Quarterly metrics
     qtr_groups = defaultdict(list)
     for record in data:
         qtr_groups[record["Year_Quarter"]].append(record)
     
     quarterly = []
-    for year_quarter, records in sorted(qtr_groups.items()):
+    for year_quarter in all_quarters:  # 🆕 UPDATED: Iterate through all quarters
+        records = qtr_groups.get(year_quarter, [])
         quarterly.append({
             "Year_Quarter": year_quarter,
             "Total": len(records),
             "Completed": sum(1 for r in records if r["Is_Completed"]),
-            "Due_This_Quarter": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).year == int(year_quarter[:4]) and (parse_date(r["due_date"]).month - 1) // 3 + 1 == int(year_quarter[-1])),
+            "Due_This_Quarter": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-Q%q") == year_quarter.replace("Q", "Q")),
             "Late_Due": sum(1 for r in records if r["Is_Late"]),
             "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
             "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
@@ -91,7 +103,8 @@ def calculate_metrics(data: List[Dict]) -> tuple:
         mth_groups[record["Year_Month"]].append(record)
     
     monthly = []
-    for year_month, records in sorted(mth_groups.items()):
+    for year_month in all_months:  # 🆕 UPDATED: Iterate through all months
+        records = mth_groups.get(year_month, [])
         monthly.append({
             "Year_Month": year_month,
             "Total": len(records),
