@@ -79,40 +79,57 @@ def calculate_metrics(data: List[Dict]) -> tuple:
     all_quarters = [f"{CURRENT_YEAR}-Q{q}" for q in range(1, 5)]
     all_months = [f"{CURRENT_YEAR}-{m:02d}" for m in range(1, 13)]
     
-    # Quarterly metrics
-    qtr_groups = defaultdict(list)
-    for record in data:
-        qtr_groups[record["Year_Quarter"]].append(record)
-    
+    # 🆕 NEW: Calculate cumulative open items across quarters
     quarterly = []
-    for year_quarter in all_quarters:  # 🆕 UPDATED: Iterate through all quarters
-        records = qtr_groups.get(year_quarter, [])
+    cumulative_open_q = 0  # Track cumulative open from previous quarters
+    
+    for year_quarter in all_quarters:
+        qtr_num = int(year_quarter[-1])
+        records = [r for r in data if r["Year_Quarter"] == year_quarter]
+        
+        # 🆕 UPDATED: For this quarter
+        # Completed in this quarter (reduces open count)
+        completed_this_q = sum(1 for r in records if r["Is_Completed"])
+        # Created in this quarter (adds to open count)
+        created_this_q = len(records)
+        
+        # 🆕 UPDATED: Cumulative open = previous open - completed this Q + created this Q
+        cumulative_open_q = cumulative_open_q - completed_this_q + created_this_q
+        
         quarterly.append({
             "Year_Quarter": year_quarter,
-            "Total": len(records),
-            "Completed": sum(1 for r in records if r["Is_Completed"]),
+            "Created_This_Quarter": created_this_q,
+            "Completed_This_Quarter": completed_this_q,
             "Due_This_Quarter": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-Q%q") == year_quarter.replace("Q", "Q")),
             "Late_Due": sum(1 for r in records if r["Is_Late"]),
             "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
-            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
+            "Currently_Open": max(0, cumulative_open_q)  # 🆕 UPDATED: Cumulative calculation
         })
     
-    # Monthly metrics
-    mth_groups = defaultdict(list)
-    for record in data:
-        mth_groups[record["Year_Month"]].append(record)
-    
+    # 🆕 NEW: Calculate cumulative open items across months
     monthly = []
-    for year_month in all_months:  # 🆕 UPDATED: Iterate through all months
-        records = mth_groups.get(year_month, [])
+    cumulative_open_m = 0  # Track cumulative open from previous months
+    
+    for year_month in all_months:
+        records = [r for r in data if r["Year_Month"] == year_month]
+        
+        # 🆕 UPDATED: For this month
+        # Completed in this month (reduces open count)
+        completed_this_m = sum(1 for r in records if r["Is_Completed"])
+        # Created in this month (adds to open count)
+        created_this_m = len(records)
+        
+        # 🆕 UPDATED: Cumulative open = previous open - completed this month + created this month
+        cumulative_open_m = cumulative_open_m - completed_this_m + created_this_m
+        
         monthly.append({
             "Year_Month": year_month,
-            "Total": len(records),
-            "Completed": sum(1 for r in records if r["Is_Completed"]),
+            "Created_This_Month": created_this_m,
+            "Completed_This_Month": completed_this_m,
             "Due_This_Month": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-%m") == year_month),
             "Late_Due": sum(1 for r in records if r["Is_Late"]),
             "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
-            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
+            "Currently_Open": max(0, cumulative_open_m)  # 🆕 UPDATED: Cumulative calculation
         })
     
     # Owner metrics
