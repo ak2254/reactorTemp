@@ -1,441 +1,208 @@
 """
-Prefect Pipeline for Work Order Data Processing
-Prepares data for Power BI Dashboard with quarterly metrics
-No pandas/dataframes - using pure Python data structures
+Prefect Pipeline for Change Plan Data Processing
+Handles: Change Plan Data, Change Actions, Change Questions
+All with same columns: name, short_description, due_date, owner_name, owner_email, created_date, status, closed_date
 """
 
 from prefect import flow, task
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
-import json
+from datetime import datetime
+from typing import List, Dict
 import csv
 from collections import defaultdict
 
-# Sample work order data structure
-SAMPLE_DATA = [
-    {
-        "Status": "Completed",
-        "Work order number": "WO-2024-001",
-        "WO description": "Repair HVAC system",
-        "reported by": "John Doe",
-        "reported date": "2024-01-15",
-        "asset": "HVAC-001",
-        "asset description": "Main Building HVAC",
-        "work group": "Maintenance",
-        "owner": "Jane Smith",
-        "worktype": "Corrective",
-        "site": "Building A",
-        "Actual finished date": "2024-01-20"
-    },
-    {
-        "Status": "Open",
-        "Work order number": "WO-2024-002",
-        "WO description": "Electrical inspection",
-        "reported by": "Mike Johnson",
-        "reported date": "2024-07-10",
-        "asset": "ELEC-002",
-        "asset description": "Electrical Panel 2",
-        "work group": "Electrical",
-        "owner": "Bob Wilson",
-        "worktype": "Preventive",
-        "site": "Building B",
-        "Actual finished date": None
-    },
-    {
-        "Status": "Open",
-        "Work order number": "WO-2023-050",
-        "WO description": "Replace lighting fixtures",
-        "reported by": "Sarah Lee",
-        "reported date": "2023-05-01",
-        "asset": "LIGHT-005",
-        "asset description": "Warehouse Lighting",
-        "work group": "Electrical",
-        "owner": "Tom Wilson",
-        "worktype": "Corrective",
-        "site": "Building C",
-        "Actual finished date": None
-    }
-]
-
 
 def parse_date(date_str: str) -> datetime:
-    """Parse date string to datetime object"""
+    """Parse date string"""
     if not date_str or date_str == "None":
         return None
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
-def get_quarter(date: datetime) -> int:
-    """Get quarter from datetime"""
-    return (date.month - 1) // 3 + 1
-
-
-def calculate_days_open(reported_date: datetime, finished_date: datetime = None) -> int:
-    """Calculate days between reported and finished (or today)"""
-    end_date = finished_date if finished_date else datetime.now()
-    return (end_date - reported_date).days
-
-
-@task(name="Load Work Order Data")
-def load_work_orders(data: List[Dict]) -> List[Dict]:
-    """Load work order data from list of dicts"""
-    print(f"Loaded {len(data)} work orders")
-    return data
-
-
-@task(name="Transform Work Orders")
-def transform_work_orders(work_orders: List[Dict]) -> List[Dict]:
-    """Transform work orders with calculated fields"""
-    transformed_orders = []
+@task
+def process_data(raw_data: List[List], headers: List[str]) -> List[Dict]:
+    """Convert list of lists to dicts and add calculated fields"""
     
-    for wo in work_orders:
+    records = []
+    for row in raw_data:
+        if len(row) != len(headers):
+            continue
+            
+        record = dict(zip(headers, row))
+        
         # Parse dates
-        reported_date = parse_date(wo["reported date"])
-        finished_date = parse_date(wo.get("Actual finished date"))
+        created_date = parse_date(record["created_date"])
+        due_date = parse_date(record["due_date"])
+        closed_date = parse_date(record.get("closed_date"))
         
-        # Calculate derived fields
-        year = reported_date.year
-        quarter = get_quarter(reported_date)
-        # 🆕 NEW: Extract month for monthly metrics
-        month = reported_date.month
-        year_quarter = f"{year}-Q{quarter}"
-        # 🆕 NEW: Format year-month (e.g., 2024-01, 2024-02)
-        year_month = f"{year}-{month:02d}"
-        days_open = calculate_days_open(reported_date, finished_date)
-        is_late = wo["Status"] == "Open" and days_open > 100
-        is_completed = wo["Status"] == "Completed"
+        # Calculate fields
+        year = created_date.year
+        month = created_date.month
+        quarter = (month - 1) // 3 + 1
         
-        # Create transformed record
-        transformed_wo = {
-            **wo,  # Include all original fields
+        is_completed = record["status"] == "Completed"
+        days_open = (closed_date - created_date).days if closed_date else (datetime.now() - created_date).days
+        is_late = not is_completed and (datetime.now() > due_date if due_date else False)
+        is_late_completed = is_completed and (closed_date > due_date if due_date and closed_date else False)
+        
+        # Add to record
+        record.update({
             "Year": year,
+            "Month": month,
             "Quarter": quarter,
-            "Month": month,  # 🆕 NEW: Month number (1-12)
-            "Year_Quarter": year_quarter,
-            "Year_Month": year_month,  # 🆕 NEW: Year-Month string for grouping
+            "Year_Quarter": f"{year}-Q{quarter}",
+            "Year_Month": f"{year}-{month:02d}",
             "Days_Open": days_open,
+            "Is_Completed": is_completed,
             "Is_Late": is_late,
-            "Is_Completed": is_completed
-        }
+            "Is_Late_Completed": is_late_completed,
+            "Is_Currently_Open": not is_completed
+        })
         
-        transformed_orders.append(transformed_wo)
+        records.append(record)
     
-    print(f"Transformed {len(transformed_orders)} work orders")
-    return transformed_orders
+    print(f"Processed {len(records)} records")
+    return records
 
 
-@task(name="Calculate Quarterly Metrics")
-def calculate_quarterly_metrics(work_orders: List[Dict]) -> List[Dict]:
-    """Aggregate work orders by year-quarter"""
+@task
+def calculate_metrics(data: List[Dict]) -> tuple:
+    """Calculate quarterly, monthly, and owner metrics"""
     
-    # Group by year-quarter
-    quarterly_groups = defaultdict(list)
-    for wo in work_orders:
-        key = wo["Year_Quarter"]
-        quarterly_groups[key].append(wo)
+    # Quarterly metrics
+    qtr_groups = defaultdict(list)
+    for record in data:
+        qtr_groups[record["Year_Quarter"]].append(record)
     
-    # Calculate metrics for each quarter
-    quarterly_metrics = []
-    for year_quarter, orders in quarterly_groups.items():
-        # Split year and quarter
-        year, quarter = year_quarter.split("-Q")
-        
-        # Calculate aggregations
-        total_wos = len(orders)
-        late_wos = sum(1 for wo in orders if wo["Is_Late"])
-        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
-        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
-        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
-        
-        # Calculate percentages
-        completion_rate = (completed_wos / total_wos * 100) if total_wos > 0 else 0
-        late_wo_percentage = (late_wos / total_wos * 100) if total_wos > 0 else 0
-        
-        quarterly_metrics.append({
-            "Year": int(year),
-            "Quarter": int(quarter),
+    quarterly = []
+    for year_quarter, records in sorted(qtr_groups.items()):
+        quarterly.append({
             "Year_Quarter": year_quarter,
-            "Total_WOs": total_wos,
-            "Total_Reported_WOs": total_wos,
-            "Late_WOs": late_wos,
-            "Completed_WOs": completed_wos,
-            "Open_WOs": open_wos,
-            "Avg_Days_Open": round(avg_days_open, 2),
-            "Completion_Rate": round(completion_rate, 2),
-            "Late_WO_Percentage": round(late_wo_percentage, 2)
+            "Total": len(records),
+            "Completed": sum(1 for r in records if r["Is_Completed"]),
+            "Due_This_Quarter": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).year == int(year_quarter[:4]) and (parse_date(r["due_date"]).month - 1) // 3 + 1 == int(year_quarter[-1])),
+            "Late_Due": sum(1 for r in records if r["Is_Late"]),
+            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
+            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
         })
     
-    # Sort by year and quarter
-    quarterly_metrics.sort(key=lambda x: (x["Year"], x["Quarter"]))
+    # Monthly metrics
+    mth_groups = defaultdict(list)
+    for record in data:
+        mth_groups[record["Year_Month"]].append(record)
     
-    print(f"Calculated metrics for {len(quarterly_metrics)} quarters")
-    return quarterly_metrics
-
-
-@task(name="Calculate Monthly Metrics")
-def calculate_monthly_metrics(work_orders: List[Dict]) -> List[Dict]:
-    """Aggregate work orders by year-month"""
-    
-    # Group by year-month
-    monthly_groups = defaultdict(list)
-    for wo in work_orders:
-        key = wo["Year_Month"]
-        monthly_groups[key].append(wo)
-    
-    # Calculate metrics for each month
-    monthly_metrics = []
-    for year_month, orders in monthly_groups.items():
-        # Split year and month
-        year, month = year_month.split("-")
-        
-        # Calculate aggregations
-        total_wos = len(orders)
-        late_wos = sum(1 for wo in orders if wo["Is_Late"])
-        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
-        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
-        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
-        
-        # Calculate percentages
-        completion_rate = (completed_wos / total_wos * 100) if total_wos > 0 else 0
-        late_wo_percentage = (late_wos / total_wos * 100) if total_wos > 0 else 0
-        
-        monthly_metrics.append({
-            "Year": int(year),
-            "Month": int(month),
+    monthly = []
+    for year_month, records in sorted(mth_groups.items()):
+        monthly.append({
             "Year_Month": year_month,
-            "Total_WOs": total_wos,
-            "Total_Reported_WOs": total_wos,
-            "Late_WOs": late_wos,
-            "Completed_WOs": completed_wos,
-            "Open_WOs": open_wos,
-            "Avg_Days_Open": round(avg_days_open, 2),
-            "Completion_Rate": round(completion_rate, 2),
-            "Late_WO_Percentage": round(late_wo_percentage, 2)
+            "Total": len(records),
+            "Completed": sum(1 for r in records if r["Is_Completed"]),
+            "Due_This_Month": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-%m") == year_month),
+            "Late_Due": sum(1 for r in records if r["Is_Late"]),
+            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
+            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
         })
     
-    # Sort by year and month
-    monthly_metrics.sort(key=lambda x: (x["Year"], x["Month"]))
+    # Owner metrics
+    owner_groups = defaultdict(list)
+    for record in data:
+        owner_groups[(record["Year_Quarter"], record["owner_name"])].append(record)
     
-    print(f"Calculated metrics for {len(monthly_metrics)} months")
-    return monthly_metrics
-
-
-
-
-# 🆕 NEW FUNCTION: Calculate Monthly Metrics
-@task(name="Calculate Monthly Metrics")
-def calculate_monthly_metrics(work_orders: List[Dict]) -> List[Dict]:
-    """Aggregate work orders by year-month"""
-    
-    # Group by year-month
-    monthly_groups = defaultdict(list)
-    for wo in work_orders:
-        key = wo["Year_Month"]
-        monthly_groups[key].append(wo)
-    
-    # Calculate metrics for each month
-    monthly_metrics = []
-    for year_month, orders in monthly_groups.items():
-        # Split year and month
-        year, month = year_month.split("-")
-        
-        # Calculate aggregations
-        total_wos = len(orders)
-        late_wos = sum(1 for wo in orders if wo["Is_Late"])
-        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
-        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
-        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
-        
-        # Calculate percentages
-        completion_rate = (completed_wos / total_wos * 100) if total_wos > 0 else 0
-        late_wo_percentage = (late_wos / total_wos * 100) if total_wos > 0 else 0
-        
-        monthly_metrics.append({
-            "Year": int(year),
-            "Month": int(month),
-            "Year_Month": year_month,
-            "Total_WOs": total_wos,
-            "Total_Reported_WOs": total_wos,
-            "Late_WOs": late_wos,
-            "Completed_WOs": completed_wos,
-            "Open_WOs": open_wos,
-            "Avg_Days_Open": round(avg_days_open, 2),
-            "Completion_Rate": round(completion_rate, 2),
-            "Late_WO_Percentage": round(late_wo_percentage, 2)
-        })
-    
-    # Sort by year and month
-    monthly_metrics.sort(key=lambda x: (x["Year"], x["Month"]))
-    
-    print(f"Calculated metrics for {len(monthly_metrics)} months")
-    return monthly_metrics
-
-
-def calculate_worktype_metrics(work_orders: List[Dict]) -> List[Dict]:
-    """Aggregate work orders by work type and quarter"""
-    
-    # Group by year-quarter and worktype
-    worktype_groups = defaultdict(list)
-    for wo in work_orders:
-        key = (wo["Year_Quarter"], wo["worktype"])
-        worktype_groups[key].append(wo)
-    
-    # Calculate metrics for each group
-    worktype_metrics = []
-    for (year_quarter, worktype), orders in worktype_groups.items():
-        total_wos = len(orders)
-        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
-        late_wos = sum(1 for wo in orders if wo["Is_Late"])
-        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
-        avg_days_open = sum(wo["Days_Open"] for wo in orders) / total_wos if total_wos > 0 else 0
-        
-        worktype_metrics.append({
+    owner = []
+    for (year_quarter, owner_name), records in sorted(owner_groups.items()):
+        owner.append({
             "Year_Quarter": year_quarter,
-            "worktype": worktype,
-            "Total_WOs": total_wos,
-            "Completed_WOs": completed_wos,
-            "Open_WOs": open_wos,
-            "Late_WOs": late_wos,
-            "Avg_Days_Open": round(avg_days_open, 2)
+            "Owner": owner_name,
+            "Total": len(records),
+            "Completed": sum(1 for r in records if r["Is_Completed"]),
+            "Late_Due": sum(1 for r in records if r["Is_Late"]),
+            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
+            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
         })
     
-    # Sort by year_quarter, then worktype
-    worktype_metrics.sort(key=lambda x: (x["Year_Quarter"], x["worktype"]))
-    
-    print(f"Calculated work type metrics: {len(worktype_metrics)} records")
-    return worktype_metrics
+    print(f"Calculated {len(quarterly)} quarters, {len(monthly)} months, {len(owner)} owner records")
+    return quarterly, monthly, owner
 
 
-@task(name="Calculate Work Group Metrics")
-def calculate_workgroup_metrics(work_orders: List[Dict]) -> List[Dict]:
-    """Aggregate work orders by work group"""
-    
-    # Group by year-quarter and work group
-    workgroup_groups = defaultdict(list)
-    for wo in work_orders:
-        key = (wo["Year_Quarter"], wo["work group"])
-        workgroup_groups[key].append(wo)
-    
-    # Calculate metrics for each group
-    workgroup_metrics = []
-    for (year_quarter, work_group), orders in workgroup_groups.items():
-        total_wos = len(orders)
-        completed_wos = sum(1 for wo in orders if wo["Is_Completed"])
-        open_wos = sum(1 for wo in orders if wo["Status"] == "Open")
-        late_wos = sum(1 for wo in orders if wo["Is_Late"])
-        
-        workgroup_metrics.append({
-            "Year_Quarter": year_quarter,
-            "work_group": work_group,
-            "Total_WOs": total_wos,
-            "Completed_WOs": completed_wos,
-            "Open_WOs": open_wos,
-            "Late_WOs": late_wos
-        })
-    
-    # Sort by year_quarter, then work_group
-    workgroup_metrics.sort(key=lambda x: (x["Year_Quarter"], x["work_group"]))
-    
-    print(f"Calculated work group metrics: {len(workgroup_metrics)} records")
-    return workgroup_metrics
-
-
-@task(name="Export to CSV")
-def export_to_csv(data: List[Dict], filename: str) -> str:
-    """Export list of dicts to CSV for Power BI import"""
+@task
+def export_csv(data: List[Dict], filename: str) -> str:
+    """Export to CSV"""
     if not data:
-        print(f"No data to export for {filename}")
         return filename
     
-    # Get all unique keys from all dictionaries
-    fieldnames = list(data[0].keys())
-    
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=data[0].keys())
         writer.writeheader()
         writer.writerows(data)
     
-    print(f"Exported {filename} with {len(data)} records")
+    print(f"Exported {filename}")
     return filename
 
 
-@task(name="Print Summary")
-def print_summary(quarterly_metrics: List[Dict]):
-    """Print a summary of quarterly metrics"""
-    print("\n" + "=" * 80)
-    print("QUARTERLY METRICS SUMMARY")
-    print("=" * 80)
-    print(f"{'Quarter':<12} {'Total':<8} {'Completed':<12} {'Late':<8} {'Comp %':<10}")
-    print("-" * 80)
-    
-    for metric in quarterly_metrics:
-        print(f"{metric['Year_Quarter']:<12} "
-              f"{metric['Total_WOs']:<8} "
-              f"{metric['Completed_WOs']:<12} "
-              f"{metric['Late_WOs']:<8} "
-              f"{metric['Completion_Rate']:<10.1f}%")
-    
-    print("=" * 80)
-
-
-@flow(name="Work Order ETL Pipeline")
-def work_order_etl_pipeline(work_orders: List[Dict]):
+@flow
+def process_change_data(raw_data: List[List], data_type: str):
     """
-    Main ETL pipeline for work order data
-    Processes raw work order data and generates multiple datasets for Power BI
+    Main pipeline for Change Plan, Change Actions, or Change Questions
+    
+    Args:
+        raw_data: List of lists with columns [name, short_description, due_date, owner_name, owner_email, created_date, status, closed_date]
+        data_type: "change_plan", "change_action", or "change_question"
     """
     
-    # Load data
-    raw_data = load_work_orders(work_orders)
+    headers = ["name", "short_description", "due_date", "owner_name", "owner_email", "created_date", "status", "closed_date"]
     
-    # Transform work orders
-    transformed_data = transform_work_orders(raw_data)
+    # Process data
+    processed = process_data(raw_data, headers)
     
-    # Calculate various metrics
-    quarterly_metrics = calculate_quarterly_metrics(transformed_data)
-    monthly_metrics = calculate_monthly_metrics(transformed_data)
-    worktype_metrics = calculate_worktype_metrics(transformed_data)
-    workgroup_metrics = calculate_workgroup_metrics(transformed_data)
+    # Calculate metrics
+    quarterly, monthly, owner = calculate_metrics(processed)
     
-    # Export all datasets
-    detail_file = export_to_csv(transformed_data, "work_orders_detail.csv")
-    quarterly_file = export_to_csv(quarterly_metrics, "work_orders_quarterly.csv")
-    monthly_file = export_to_csv(monthly_metrics, "work_orders_monthly.csv")
-    worktype_file = export_to_csv(worktype_metrics, "work_orders_by_worktype.csv")
-    workgroup_file = export_to_csv(workgroup_metrics, "work_orders_by_workgroup.csv")
+    # Export files
+    export_csv(processed, f"{data_type}_detail.csv")
+    export_csv(quarterly, f"{data_type}_quarterly.csv")
+    export_csv(monthly, f"{data_type}_monthly.csv")
+    export_csv(owner, f"{data_type}_by_owner.csv")
     
     # Print summary
-    print_summary(quarterly_metrics)
+    print(f"\n{'='*80}")
+    print(f"{data_type.upper()} - QUARTERLY SUMMARY")
+    print(f"{'='*80}")
+    print(f"{'Quarter':<12} {'Total':<8} {'Completed':<12} {'Due':<8} {'Late Due':<10} {'Late Completed':<15} {'Open':<8}")
+    print(f"{'-'*80}")
+    for q in quarterly:
+        print(f"{q['Year_Quarter']:<12} {q['Total']:<8} {q['Completed']:<12} {q['Due_This_Quarter']:<8} {q['Late_Due']:<10} {q['Late_Completed']:<15} {q['Currently_Open']:<8}")
+    print(f"{'='*80}\n")
     
-    print("\n=== Pipeline Completed Successfully ===")
-    print(f"Generated files:")
-    print(f"  - {detail_file}")
-    print(f"  - {quarterly_file}")
-    print(f"  - {monthly_file}")
-    print(f"  - {worktype_file}")
-    print(f"  - {workgroup_file}")
-    
-    return {
-        "detail": transformed_data,
-        "quarterly": quarterly_metrics,
-        "monthly": monthly_metrics,
-        "worktype": worktype_metrics,
-        "workgroup": workgroup_metrics
-    }
+    return {"detail": processed, "quarterly": quarterly, "monthly": monthly, "owner": owner}
 
 
-# Example usage
+# EXAMPLE USAGE
 if __name__ == "__main__":
-    # Run the pipeline with sample data
-    result = work_order_etl_pipeline(SAMPLE_DATA)
     
-    # Optionally save results to JSON for inspection
-    with open("pipeline_results.json", "w") as f:
-        # Convert boolean values to strings for JSON compatibility
-        json_result = {
-            key: [{k: str(v) if isinstance(v, bool) else v for k, v in item.items()} 
-                  for item in value]
-            for key, value in result.items()
-        }
-        json.dump(json_result, f, indent=2, default=str)
-    print("\nResults also saved to pipeline_results.json")
+    # Change Plan Data
+    change_plan_data = [
+        ["CP-2024-001", "System upgrade Q1", "2024-03-31", "John Doe", "john@email.com", "2024-01-15", "Completed", "2024-03-28"],
+        ["CP-2024-002", "Database migration", "2024-06-30", "Jane Smith", "jane@email.com", "2024-04-10", "Open", None],
+        ["CP-2024-003", "Security patch", "2024-02-15", "Mike Johnson", "mike@email.com", "2024-01-01", "Open", None],
+    ]
+    
+    # Change Actions Data
+    change_actions_data = [
+        ["CA-2024-001", "Install patches", "2024-03-15", "Tom Wilson", "tom@email.com", "2024-03-01", "Completed", "2024-03-14"],
+        ["CA-2024-002", "Run tests", "2024-04-30", "Sarah Davis", "sarah@email.com", "2024-04-15", "Open", None],
+    ]
+    
+    # Change Questions Data
+    change_questions_data = [
+        ["CQ-2024-001", "Approval for change", "2024-03-20", "Alex Brown", "alex@email.com", "2024-03-10", "Completed", "2024-03-19"],
+        ["CQ-2024-002", "Risk assessment", "2024-05-15", "Lisa White", "lisa@email.com", "2024-05-01", "Open", None],
+    ]
+    
+    # Process all three
+    print("\n*** PROCESSING CHANGE PLAN DATA ***")
+    cp_result = process_change_data(change_plan_data, "change_plan")
+    
+    print("\n*** PROCESSING CHANGE ACTIONS DATA ***")
+    ca_result = process_change_data(change_actions_data, "change_action")
+    
+    print("\n*** PROCESSING CHANGE QUESTIONS DATA ***")
+    cq_result = process_change_data(change_questions_data, "change_question")
