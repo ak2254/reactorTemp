@@ -1,238 +1,251 @@
-"""
-Prefect Pipeline for Change Plan Data Processing
-Handles: Change Plan Data, Change Actions, Change Questions
-All with same columns: name, short_description, due_date, owner_name, owner_email, created_date, status, closed_date
-"""
-
 from prefect import flow, task
 from datetime import datetime
 from typing import List, Dict
 import csv
 from collections import defaultdict
+from calendar import monthrange
 
 
 def parse_date(date_str: str) -> datetime:
-    """Parse date string"""
+    """Parse YYYY-MM-DD or return None"""
     if not date_str or date_str == "None":
         return None
     return datetime.strptime(date_str, "%Y-%m-%d")
 
 
-# 🆕 NEW: Get current year and today's date
+# Current year context
 CURRENT_YEAR = datetime.now().year
-CURRENT_MONTH = datetime.now().month
-CURRENT_QUARTER = (CURRENT_MONTH - 1) // 3 + 1
 TODAY = datetime.now()
 
 
+# ==========================
+# Date window helpers
+# ==========================
+
+def quarter_start_end(year: int, q: int):
+    """Return start/end datetime of a quarter"""
+    start_month = 3 * (q - 1) + 1
+    start = datetime(year, start_month, 1)
+    end_month = start_month + 2
+    last_day = monthrange(year, end_month)[1]
+    end = datetime(year, end_month, last_day, 23, 59, 59)
+    return start, end
+
+
+def month_start_end(year: int, month: int):
+    """Return start/end datetime of a month"""
+    start = datetime(year, month, 1)
+    last_day = monthrange(year, month)[1]
+    end = datetime(year, month, last_day, 23, 59, 59)
+    return start, end
+
+
+# ==========================
+# DATA PROCESSING
+# ==========================
+
 @task
 def process_data(raw_data: List[List], headers: List[str]) -> List[Dict]:
-    """Convert list of lists to dicts and add calculated fields"""
-    
+    """Convert input rows to structured dicts and compute fields."""
     records = []
+
     for row in raw_data:
         if len(row) != len(headers):
             continue
-            
+
         record = dict(zip(headers, row))
-        
+
         # Parse dates
-        created_date = parse_date(record["created_date"])
-        due_date = parse_date(record["due_date"])
-        closed_date = parse_date(record.get("closed_date"))
-        
-        # Calculate fields
-        year = created_date.year
-        month = created_date.month
-        quarter = (month - 1) // 3 + 1
-        
+        created = parse_date(record["created_date"])
+        due = parse_date(record["due_date"])
+        closed = parse_date(record.get("closed_date"))
+
         is_completed = record["status"] == "Completed"
-        days_open = (closed_date - created_date).days if closed_date else (datetime.now() - created_date).days
-        is_late = not is_completed and (datetime.now() > due_date if due_date else False)
-        is_late_completed = is_completed and (closed_date > due_date if due_date and closed_date else False)
-        
-        # Add to record
+
+        days_open = (closed - created).days if closed else (TODAY - created).days
+
+        is_late = False
+        if due and not is_completed:
+            is_late = TODAY > due
+
+        is_late_completed = False
+        if due and closed:
+            is_late_completed = closed > due
+
+        # Add fields
         record.update({
-            "Year": year,
-            "Month": month,
-            "Quarter": quarter,
-            "Year_Quarter": f"{year}-Q{quarter}",
-            "Year_Month": f"{year}-{month:02d}",
-            "Days_Open": days_open,
+            "created_date": created,
+            "due_date": due,
+            "closed_date": closed,
             "Is_Completed": is_completed,
             "Is_Late": is_late,
             "Is_Late_Completed": is_late_completed,
+            "Days_Open": days_open,
             "Is_Currently_Open": not is_completed
         })
-        
+
         records.append(record)
-    
+
     print(f"Processed {len(records)} records")
     return records
 
 
+# ==========================
+# METRIC CALCULATIONS
+# ==========================
+
 @task
 def calculate_metrics(data: List[Dict]) -> tuple:
-    """Calculate quarterly, monthly, and owner metrics"""
-    
-    # 🆕 UPDATED: Create all quarters and months up to end of current year
-    all_quarters = [f"{CURRENT_YEAR}-Q{q}" for q in range(1, 5)]
-    all_months = [f"{CURRENT_YEAR}-{m:02d}" for m in range(1, 13)]
-    
-    # 🆕 NEW: Calculate cumulative open items across quarters
-    quarterly = []
-    cumulative_open_q = 0  # Track cumulative open from previous quarters
-    
-    for year_quarter in all_quarters:
-        qtr_num = int(year_quarter[-1])
-        records = [r for r in data if r["Year_Quarter"] == year_quarter]
-        
-        # 🆕 UPDATED: For this quarter
-        # Completed in this quarter (reduces open count)
-        completed_this_q = sum(1 for r in records if r["Is_Completed"])
-        # Created in this quarter (adds to open count)
-        created_this_q = len(records)
-        
-        # 🆕 UPDATED: Cumulative open = previous open - completed this Q + created this Q
-        cumulative_open_q = cumulative_open_q - completed_this_q + created_this_q
-        
-        quarterly.append({
-            "Year_Quarter": year_quarter,
-            "Created_This_Quarter": created_this_q,
-            "Completed_This_Quarter": completed_this_q,
-            "Due_This_Quarter": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-Q%q") == year_quarter.replace("Q", "Q")),
-            "Late_Due": sum(1 for r in records if r["Is_Late"]),
-            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
-            "Currently_Open": max(0, cumulative_open_q)  # 🆕 UPDATED: Cumulative calculation
-        })
-    
-    # 🆕 NEW: Calculate cumulative open items across months
-    monthly = []
-    cumulative_open_m = 0  # Track cumulative open from previous months
-    
-    for year_month in all_months:
-        records = [r for r in data if r["Year_Month"] == year_month]
-        
-        # 🆕 UPDATED: For this month
-        # Completed in this month (reduces open count)
-        completed_this_m = sum(1 for r in records if r["Is_Completed"])
-        # Created in this month (adds to open count)
-        created_this_m = len(records)
-        
-        # 🆕 UPDATED: Cumulative open = previous open - completed this month + created this month
-        cumulative_open_m = cumulative_open_m - completed_this_m + created_this_m
-        
-        monthly.append({
-            "Year_Month": year_month,
-            "Created_This_Month": created_this_m,
-            "Completed_This_Month": completed_this_m,
-            "Due_This_Month": sum(1 for r in records if parse_date(r["due_date"]) and parse_date(r["due_date"]).strftime("%Y-%m") == year_month),
-            "Late_Due": sum(1 for r in records if r["Is_Late"]),
-            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
-            "Currently_Open": max(0, cumulative_open_m)  # 🆕 UPDATED: Cumulative calculation
-        })
-    
-    # Owner metrics
-    owner_groups = defaultdict(list)
-    for record in data:
-        owner_groups[(record["Year_Quarter"], record["owner_name"])].append(record)
-    
-    owner = []
-    for (year_quarter, owner_name), records in sorted(owner_groups.items()):
-        owner.append({
-            "Year_Quarter": year_quarter,
-            "Owner": owner_name,
-            "Total": len(records),
-            "Completed": sum(1 for r in records if r["Is_Completed"]),
-            "Late_Due": sum(1 for r in records if r["Is_Late"]),
-            "Late_Completed": sum(1 for r in records if r["Is_Late_Completed"]),
-            "Currently_Open": sum(1 for r in records if r["Is_Currently_Open"])
-        })
-    
-    print(f"Calculated {len(quarterly)} quarters, {len(monthly)} months, {len(owner)} owner records")
-    return quarterly, monthly, owner
+    """Calculate quarterly, monthly, and owner metrics using lifecycle logic."""
 
+    # ---------------------------------------------------------------
+    # QUARTERLY
+    # ---------------------------------------------------------------
+    quarterly = []
+
+    for q in range(1, 5):
+
+        start, end = quarter_start_end(CURRENT_YEAR, q)
+
+        # Items open in this quarter
+        open_items = [
+            r for r in data
+            if r["created_date"] <= end and
+               (r["closed_date"] is None or r["closed_date"] >= start)
+        ]
+
+        created_this_q = [
+            r for r in data
+            if start <= r["created_date"] <= end
+        ]
+
+        closed_this_q = [
+            r for r in data
+            if r["closed_date"] and start <= r["closed_date"] <= end
+        ]
+
+        due_this_q = [
+            r for r in data
+            if r["due_date"] and start <= r["due_date"] <= end
+        ]
+
+        quarterly.append({
+            "Year_Quarter": f"{CURRENT_YEAR}-Q{q}",
+            "Open_Items": len(open_items),
+            "Created_This_Quarter": len(created_this_q),
+            "Closed_This_Quarter": len(closed_this_q),
+            "Due_This_Quarter": len(due_this_q),
+        })
+
+    # ---------------------------------------------------------------
+    # MONTHLY
+    # ---------------------------------------------------------------
+    monthly = []
+
+    for m in range(1, 13):
+
+        start, end = month_start_end(CURRENT_YEAR, m)
+
+        open_items = [
+            r for r in data
+            if r["created_date"] <= end and
+               (r["closed_date"] is None or r["closed_date"] >= start)
+        ]
+
+        created_this_m = [
+            r for r in data
+            if start <= r["created_date"] <= end
+        ]
+
+        closed_this_m = [
+            r for r in data
+            if r["closed_date"] and start <= r["closed_date"] <= end
+        ]
+
+        due_this_m = [
+            r for r in data
+            if r["due_date"] and start <= r["due_date"] <= end
+        ]
+
+        monthly.append({
+            "Year_Month": f"{CURRENT_YEAR}-{m:02d}",
+            "Open_Items": len(open_items),
+            "Created_This_Month": len(created_this_m),
+            "Closed_This_Month": len(closed_this_m),
+            "Due_This_Month": len(due_this_m),
+        })
+
+    # ---------------------------------------------------------------
+    # OWNER METRICS (group by owner, but still using lifecycle)
+    # ---------------------------------------------------------------
+    owner = defaultdict(lambda: {
+        "Total": 0,
+        "Open": 0,
+        "Completed": 0,
+        "Late_Due": 0,
+        "Late_Completed": 0
+    })
+
+    for r in data:
+        o = owner[r["owner_name"]]
+        o["Total"] += 1
+        if r["Is_Currently_Open"]:
+            o["Open"] += 1
+        if r["Is_Completed"]:
+            o["Completed"] += 1
+        if r["Is_Late"]:
+            o["Late_Due"] += 1
+        if r["Is_Late_Completed"]:
+            o["Late_Completed"] += 1
+
+    owner_list = [
+        {"Owner": owner_name, **metrics}
+        for owner_name, metrics in owner.items()
+    ]
+
+    print(f"Calculated {len(quarterly)} quarter records, {len(monthly)} month records, {len(owner_list)} owner records")
+    return quarterly, monthly, owner_list
+
+
+# ==========================
+# CSV EXPORT
+# ==========================
 
 @task
 def export_csv(data: List[Dict], filename: str) -> str:
-    """Export to CSV"""
     if not data:
         return filename
-    
-    with open(filename, 'w', newline='', encoding='utf-8') as f:
+
+    with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=data[0].keys())
         writer.writeheader()
         writer.writerows(data)
-    
+
     print(f"Exported {filename}")
     return filename
 
 
+# ==========================
+# MAIN FLOW
+# ==========================
+
 @flow
 def process_change_data(raw_data: List[List], data_type: str):
-    """
-    Main pipeline for Change Plan, Change Actions, or Change Questions
-    
-    Args:
-        raw_data: List of lists with columns [name, short_description, due_date, owner_name, owner_email, created_date, status, closed_date]
-        data_type: "change_plan", "change_action", or "change_question"
-    """
-    
-    headers = ["name", "short_description", "due_date", "owner_name", "owner_email", "created_date", "status", "closed_date"]
-    
-    # Process data
+
+    headers = ["name", "short_description", "due_date", "owner_name",
+               "owner_email", "created_date", "status", "closed_date"]
+
     processed = process_data(raw_data, headers)
-    
-    # Calculate metrics
     quarterly, monthly, owner = calculate_metrics(processed)
-    
-    # Export files
+
     export_csv(processed, f"{data_type}_detail.csv")
     export_csv(quarterly, f"{data_type}_quarterly.csv")
     export_csv(monthly, f"{data_type}_monthly.csv")
     export_csv(owner, f"{data_type}_by_owner.csv")
-    
-    # Print summary
-    print(f"\n{'='*80}")
-    print(f"{data_type.upper()} - QUARTERLY SUMMARY")
-    print(f"{'='*80}")
-    print(f"{'Quarter':<12} {'Total':<8} {'Completed':<12} {'Due':<8} {'Late Due':<10} {'Late Completed':<15} {'Open':<8}")
-    print(f"{'-'*80}")
-    for q in quarterly:
-        print(f"{q['Year_Quarter']:<12} {q['Total']:<8} {q['Completed']:<12} {q['Due_This_Quarter']:<8} {q['Late_Due']:<10} {q['Late_Completed']:<15} {q['Currently_Open']:<8}")
-    print(f"{'='*80}\n")
-    
-    return {"detail": processed, "quarterly": quarterly, "monthly": monthly, "owner": owner}
 
-
-# EXAMPLE USAGE
-if __name__ == "__main__":
-    
-    # Change Plan Data
-    change_plan_data = [
-        ["CP-2024-001", "System upgrade Q1", "2024-03-31", "John Doe", "john@email.com", "2024-01-15", "Completed", "2024-03-28"],
-        ["CP-2024-002", "Database migration", "2024-06-30", "Jane Smith", "jane@email.com", "2024-04-10", "Open", None],
-        ["CP-2024-003", "Security patch", "2024-02-15", "Mike Johnson", "mike@email.com", "2024-01-01", "Open", None],
-    ]
-    
-    # Change Actions Data
-    change_actions_data = [
-        ["CA-2024-001", "Install patches", "2024-03-15", "Tom Wilson", "tom@email.com", "2024-03-01", "Completed", "2024-03-14"],
-        ["CA-2024-002", "Run tests", "2024-04-30", "Sarah Davis", "sarah@email.com", "2024-04-15", "Open", None],
-    ]
-    
-    # Change Questions Data
-    change_questions_data = [
-        ["CQ-2024-001", "Approval for change", "2024-03-20", "Alex Brown", "alex@email.com", "2024-03-10", "Completed", "2024-03-19"],
-        ["CQ-2024-002", "Risk assessment", "2024-05-15", "Lisa White", "lisa@email.com", "2024-05-01", "Open", None],
-    ]
-    
-    # Process all three
-    print("\n*** PROCESSING CHANGE PLAN DATA ***")
-    cp_result = process_change_data(change_plan_data, "change_plan")
-    
-    print("\n*** PROCESSING CHANGE ACTIONS DATA ***")
-    ca_result = process_change_data(change_actions_data, "change_action")
-    
-    print("\n*** PROCESSING CHANGE QUESTIONS DATA ***")
-    cq_result = process_change_data(change_questions_data, "change_question")
+    return {
+        "detail": processed,
+        "quarterly": quarterly,
+        "monthly": monthly,
+        "owner": owner
+    }
